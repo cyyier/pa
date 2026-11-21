@@ -37,12 +37,33 @@ def cmd_check(args) -> int:
 def cmd_build(args) -> int:
     from .build import BuildError, compile_pa
     try:
-        out = compile_pa(args.file, out=args.output, shared=args.shared, emit_ir=args.emit_ir, mode=args.mode)
+        out = compile_pa(args.file, out=args.output, shared=args.shared, emit_ir=args.emit_ir, mode=args.mode,
+                         python_home=args.python_home, python_path=args.python_path or None,
+                         relocatable=args.relocatable)
     except BuildError as e:
         print(e, file=sys.stderr)
         return 1
     print(out)
+    if args.relocatable and not args.emit_ir and not args.shared:
+        from .doctor import relocatable_notice
+        note = relocatable_notice(out)
+        if note:
+            print(note, file=sys.stderr)
     return 0
+
+
+def cmd_doctor(args) -> int:
+    from .doctor import check_binary, check_environment
+    rep = check_binary(args.binary) if args.binary else check_environment()
+    print(rep.text())
+    return 0 if rep.ok else 1
+
+
+def cmd_bundle(args) -> int:
+    from .doctor import bundle
+    rep = bundle(args.binary, dest=args.dest, with_stdlib=args.with_stdlib)
+    print(rep.text())
+    return 0 if rep.ok else 1
 
 
 def cmd_lsp(args) -> int:
@@ -64,9 +85,20 @@ def main(argv=None) -> int:
     b.add_argument("-o", "--output")
     b.add_argument("--mode", choices=("dev", "prod"), default="dev",
                    help="dev: deep .paw lint + full boundary customs; prod: signature check + light customs")
+    b.add_argument("--python-home", help="default CPython prefix baked as a run-time fallback (PA_PYTHON_HOME overrides)")
+    b.add_argument("--python-path", action="append", help="default sys.path entry baked as a fallback (repeatable; PA_PYPATH overrides)")
+    b.add_argument("--relocatable", action="store_true", help="bake no Python paths at all (rely on PA_PYTHON_HOME / PA_PYPATH / VIRTUAL_ENV)")
     b.add_argument("--shared", action="store_true", help="build a shared library of @export functions")
     b.add_argument("--emit-ir", action="store_true", help="print LLVM IR instead of linking")
     b.set_defaults(fn=cmd_build)
+    d = sub.add_parser("doctor", help="diagnose the build environment, or why a built binary cannot start")
+    d.add_argument("binary", nargs="?", help="a binary built by pac (omit to check this machine)")
+    d.set_defaults(fn=cmd_doctor)
+    bu = sub.add_parser("bundle", help="copy libpython (and optionally the stdlib) next to a binary")
+    bu.add_argument("binary")
+    bu.add_argument("--dest", help="directory to bundle into (default: the binary's directory)")
+    bu.add_argument("--with-stdlib", action="store_true", help="also ship a trimmed stdlib as <dest>/python-home")
+    bu.set_defaults(fn=cmd_bundle)
     l = sub.add_parser("lsp", help="start the language server (stdio)")
     l.set_defaults(fn=cmd_lsp)
     args = ap.parse_args(argv)

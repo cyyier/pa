@@ -19,6 +19,9 @@ pac = "pa_lang.cli:main"
 [tool.setuptools]
 packages = ["pa_lang"]
 
+[tool.setuptools.package-data]
+pa_lang = ["*.c"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

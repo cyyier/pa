@@ -12,6 +12,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #ifndef PA_MODE
 #define PA_MODE "dev"
@@ -138,10 +140,11 @@ static const char PRELUDE[] =
     "builtins.str_view = str; builtins.bytes_view = bytes; builtins.void = type(None)\n"
     "for _c in (span, Vec, ptr): setattr(builtins, _c.__name__, _c)\n"
     "PAW_DIRS = []\n"
+    "EMBEDDED = {}\n"
     "_cache = {}\n"
     "def load(name):\n"
     "    if name in _cache: return _cache[name]\n"
-    "    for d in PAW_DIRS:\n"
+    "    for d in PAW_DIRS:\n"                                  /* PA_PATH: live-edit override */
     "        p = os.path.join(d, name + '.paw')\n"
     "        if os.path.isfile(p):\n"
     "            from importlib.machinery import SourceFileLoader\n"
@@ -152,7 +155,16 @@ static const char PRELUDE[] =
     "            loader.exec_module(m)\n"
     "            _cache[name] = m\n"
     "            return m\n"
-    "    raise ImportError('no .paw module named ' + name + ' in ' + repr(PAW_DIRS))\n";
+    "    src = EMBEDDED.get(name)\n"                            /* sources travel inside the binary */
+    "    if src is not None:\n"
+    "        import types\n"
+    "        m = types.ModuleType('paw_' + name)\n"
+    "        m.__file__ = '<embedded>/' + name + '.paw'\n"
+    "        sys.modules['paw_' + name] = m\n"
+    "        exec(compile(src, m.__file__, 'exec'), m.__dict__)\n"
+    "        _cache[name] = m\n"
+    "        return m\n"
+    "    raise ImportError('no .paw module named ' + name + ' (embedded: ' + repr(sorted(EMBEDDED)) + ', PA_PATH: ' + repr(PAW_DIRS) + ')')\n";
 
 #ifndef PA_PYHOME
 #define PA_PYHOME ""
@@ -160,15 +172,92 @@ static const char PRELUDE[] =
 #ifndef PA_PYPATH
 #define PA_PYPATH ""
 #endif
-#ifndef PA_PAWDIRS
-#define PA_PAWDIRS ""
-#endif
 
-void pa_bridge_init(const char *pyhome, const char *pypath, const char *pawdirs) {
+typedef struct { const char *name; const char *src; } PaEmbed;
+extern const PaEmbed pa_embedded_paw[] __attribute__((weak));
+
+static int dir_exists(const char *p) {
+    struct stat st;
+    return p && *p && stat(p, &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+/* Add `dir` to sys.path when it exists and is not there yet (front = take priority). */
+static void add_path(PyObject *sys_path, const char *dir, int front) {
+    if (!dir_exists(dir)) return;
+    PyObject *s = PyUnicode_FromString(dir);
+    if (PySequence_Contains(sys_path, s) == 0) {
+        if (front) PyList_Insert(sys_path, 0, s); else PyList_Append(sys_path, s);
+    }
+    Py_DECREF(s);
+}
+
+static void add_path_list(PyObject *sys_path, const char *list, int front) {
+    if (!list || !*list) return;
+    char *dup = strdup(list);
+    for (char *tok = strtok(dup, ":"); tok; tok = strtok(NULL, ":")) add_path(sys_path, tok, front);
+    free(dup);
+}
+
+static int has_stdlib(const char *home) {
+    char p[1100];
+    snprintf(p, sizeof p, "%s/lib/python%d.%d/os.py", home, PY_MAJOR_VERSION, PY_MINOR_VERSION);
+    struct stat st;
+    return stat(p, &st) == 0;
+}
+
+/* PYTHONHOME choice: PA_PYTHON_HOME > PYTHONHOME (left to CPython) > <exe dir>/python-home > build-time default. */
+static const char *choose_home(const char *baked, char *buf, size_t cap) {
+    const char *e = getenv("PA_PYTHON_HOME");
+    if (e && *e) return e;
+    if (getenv("PYTHONHOME")) return NULL;
+    char exe[900];
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+    if (n > 0) {
+        exe[n] = 0;
+        char *slash = strrchr(exe, '/');
+        if (slash) {
+            *slash = 0;
+            snprintf(buf, cap, "%s/python-home", exe);
+            if (has_stdlib(buf)) return buf;
+        }
+    }
+    if (baked && *baked && has_stdlib(baked)) return baked;
+    return NULL;
+}
+
+static void startup_fault(const char *what, const char *home) {
+    char msg[1500], summary[1600];
+    snprintf(msg, sizeof msg,
+             "cannot start the embedded Python runtime: %s (home: %s). Fix: set PA_PYTHON_HOME to a Python prefix that contains "
+             "lib/python%d.%d, or ship one next to the binary with `pac bundle <binary> --with-stdlib`; "
+             "run `pac doctor <binary>` to diagnose.",
+             what, home ? home : "<default>", PY_MAJOR_VERSION, PY_MINOR_VERSION);
+    SB b = {0};
+    sb_printf(&b, "{\n  \"mode\": \"%s\",\n  \"direction\": \"STARTUP\",\n  \"worker\": \"python-runtime\",\n  \"violation\": ", PA_MODE);
+    sb_json_str(&b, msg, strlen(msg));
+    sb_printf(&b, ",\n  \"in_payload_snapshot\": []\n}\n");
+    snprintf(summary, sizeof summary, "%s", msg);
+    pa_fault_raise("pa_boundary_fault.json", summary, b.s);
+}
+
+/* Python location is resolved at run time, in priority order:
+ *   home : PA_PYTHON_HOME > PYTHONHOME > <exe dir>/python-home (pac bundle) > build-time default (only if it has a stdlib)
+ *   path : PA_PYPATH > $VIRTUAL_ENV/lib/pythonX.Y/site-packages > build-time defaults (only entries that exist)
+ *   .paw : PA_PATH directories (live-edit override) > sources embedded in the binary                      */
+void pa_bridge_init(const char *pyhome, const char *pypath) {
     if (g_bridge) return;
-    if (!Py_IsInitialized()) {
-        if (pyhome && *pyhome && !getenv("PYTHONHOME")) setenv("PYTHONHOME", pyhome, 0);
-        Py_InitializeEx(0);
+    int hosted = Py_IsInitialized();
+    if (!hosted) {
+        char hbuf[1000];
+        const char *home = choose_home(pyhome, hbuf, sizeof hbuf);
+        PyConfig config;
+        PyConfig_InitPythonConfig(&config);
+        config.install_signal_handlers = 0;
+        PyStatus status = PyStatus_Ok();
+        if (home) status = PyConfig_SetBytesString(&config, &config.home, home);
+        if (!PyStatus_Exception(status)) status = Py_InitializeFromConfig(&config);
+        PyConfig_Clear(&config);
+        if (PyStatus_Exception(status)) startup_fault(status.err_msg ? status.err_msg : "initialization failed", home);
     }
     PyGILState_STATE g = PyGILState_Ensure();
     g_bridge = PyModule_New("_pa_bridge");
@@ -177,24 +266,39 @@ void pa_bridge_init(const char *pyhome, const char *pypath, const char *pawdirs)
     PyObject *r = PyRun_String(PRELUDE, Py_file_input, d, d);
     if (!r) { PyErr_Print(); exit(70); }
     Py_DECREF(r);
+
     PyObject *sys_path = PySys_GetObject("path");
-    char *dup = strdup(pypath ? pypath : "");
-    for (char *tok = strtok(dup, ":"); tok; tok = strtok(NULL, ":")) {
-        PyObject *s = PyUnicode_FromString(tok);
-        if (PySequence_Contains(sys_path, s) == 0) PyList_Append(sys_path, s);
-        Py_DECREF(s);
+    add_path_list(sys_path, getenv("PA_PYPATH"), 1);
+    if (!hosted) {
+        const char *venv = getenv("VIRTUAL_ENV");
+        if (venv && *venv) {
+            char sp[1024];
+            snprintf(sp, sizeof sp, "%s/lib/python%d.%d/site-packages", venv, PY_MAJOR_VERSION, PY_MINOR_VERSION);
+            add_path(sys_path, sp, 0);
+        }
+        add_path_list(sys_path, pypath, 0);
     }
-    free(dup);
+
     PyObject *dirs = PyDict_GetItemString(d, "PAW_DIRS");
-    dup = strdup(pawdirs ? pawdirs : "");
     const char *env = getenv("PA_PATH");
-    if (env) { char *e2 = strdup(env); for (char *tok = strtok(e2, ":"); tok; tok = strtok(NULL, ":")) { PyObject *s = PyUnicode_FromString(tok); PyList_Append(dirs, s); Py_DECREF(s);} free(e2); }
-    for (char *tok = strtok(dup, ":"); tok; tok = strtok(NULL, ":")) {
-        PyObject *s = PyUnicode_FromString(tok);
-        PyList_Append(dirs, s);
-        Py_DECREF(s);
+    if (env && *env) {
+        char *e2 = strdup(env);
+        for (char *tok = strtok(e2, ":"); tok; tok = strtok(NULL, ":")) {
+            PyObject *s = PyUnicode_FromString(tok);
+            PyList_Append(dirs, s);
+            Py_DECREF(s);
+        }
+        free(e2);
     }
-    free(dup);
+    PyObject *embedded = PyDict_GetItemString(d, "EMBEDDED");
+    if (pa_embedded_paw) {
+        for (const PaEmbed *e = pa_embedded_paw; e->name; e++) {
+            PyObject *src = PyUnicode_DecodeUTF8(e->src, (Py_ssize_t)strlen(e->src), "strict");
+            if (!src) { PyErr_Print(); exit(70); }
+            PyDict_SetItemString(embedded, e->name, src);
+            Py_DECREF(src);
+        }
+    }
     PyGILState_Release(g);
 }
 
@@ -334,7 +438,7 @@ void pa_call_paw(const char *mod, const char *fn, PaArg *args, int32_t nargs, in
     int allow_nan = flags & 1;
     snprintf(worker, sizeof worker, "%s.%s", mod, fn);
     check_out(worker, args, nargs, allow_nan);
-    if (!g_bridge) pa_bridge_init(PA_PYHOME, PA_PYPATH, PA_PAWDIRS);
+    if (!g_bridge) pa_bridge_init(PA_PYHOME, PA_PYPATH);
     pa_set_fault_hook(release_gil_hook);
     PyGILState_STATE g = PyGILState_Ensure();
     g_gil_state = g;

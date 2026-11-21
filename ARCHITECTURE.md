@@ -132,3 +132,9 @@ Pa Language (.pa) — 完整架构与工程规范Slogan: Inspired by Python, 100
 - **`PA_E089` 放宽标量下标/字段读取**：别名检查移至类型推导后执行（`infer.check_aliases`）。`f(mut(v), v[i])` 这类标量下标/字段读在调用前已按值载入寄存器，不持有借用指针，不再误报 `PA_E089`；传入容器本身、`mut(v)`、`span(v, ...)` 或聚合下标（如二维数组行 `m[0]`）仍严格拦截。
 - **内置 `libm` 数学原语**：`sin`、`cos`、`tan`、`sqrt`、`atan`、`atan2`、`exp`、`log`、`floor`、`ceil`；`analyze()` 改为不动点传播（支持任意深度调用链）。
 - **Skill 补齐**：`pa-coder` 补全 `libm` 原语、>4 参数多行纵向对齐规范、`[0] * 0` / `[x] * n` 用法；`pa-coder` 与 `py-to-pa` 均补上浮点 `%` 的 C `fmod` 语义提醒。
+
+### 修订 R14：清理写死路径（可搬迁二进制）
+- **`.paw` 源码内嵌进二进制**（`build_embed` 生成 `pa_paw_embed.c`，八进制转义，无三字符组 / 十六进制续接问题），不再烘焙源码目录；`PA_PATH=dir1:dir2` 仍可优先加载磁盘上的 `.paw`（开发期热改）。内嵌模块的 `__file__` 为 `<embedded>/<name>.paw`，`.paw` 内不要依赖 `__file__`（示例的数据目录默认改为当前工作目录，可由 `PA_*_DATA_DIR` 覆盖）。
+- **Python 位置运行期解析**：home：`PA_PYTHON_HOME` > `PYTHONHOME` > 构建期默认（目录仍存在才用）；`sys.path`：`PA_PYPATH` > `$VIRTUAL_ENV/lib/pythonX.Y/site-packages` > 构建期默认（仅保留仍存在的目录；默认值收窄为构建解释器的 purelib/platlib，不再整份烘焙 `sys.path`）。被宿主 Python 加载的共享库不改 `PYTHONHOME`。
+- **`pac build`** 新增 `--python-home`、`--python-path`（可重复）、`--relocatable`（不烘焙任何 Python 路径）。rpath 新增 `$ORIGIN`、`$ORIGIN/../lib`（可把 `libpython` 放在二进制旁）；非 relocatable 时仍附带构建期 libpython 目录。
+- **打包**：`pyproject.toml` 增加 `package-data = {pa_lang = ["*.c"]}`，普通 `pip install .`（非可编辑）也会带上 `runtime_bridge.c` / `runtime_core.c`；新增根目录 [README.md](README.md)。
