@@ -33,8 +33,16 @@ static const char *ELEM_NAME[] = {"i32", "i64", "u8", "f32", "f64", "bool"};
 static const char *ELEM_FMT[] = {"i", "q", "B", "f", "d", "?"};
 static const int ELEM_SIZE[] = {4, 8, 1, 4, 8, 1};
 
+void pa_fault_raise(const char *file_default, const char *summary, const char *json);
+void pa_set_fault_hook(void (*hook)(void));
+
 static PyObject *g_bridge = NULL;
-static int g_allow_nan = 0;   /* @allow_nan: per-call, set from the flags argument */
+/* GIL bookkeeping so a fault can release the GIL before unwinding (shared libs longjmp out). */
+static __thread int g_gil_held = 0;
+static __thread PyGILState_STATE g_gil_state;
+static void release_gil_hook(void) {
+    if (g_gil_held) { g_gil_held = 0; PyGILState_Release(g_gil_state); }
+}
 
 /* ---- tiny string builder ------------------------------------------------ */
 typedef struct { char *s; size_t n, cap; } SB;
@@ -110,12 +118,9 @@ static void fault(const char *direction, const char *worker, const char *violati
     sb_printf(&b, ",\n  \"in_payload_snapshot\": ");
     snapshot(&b, args, nargs);
     sb_printf(&b, "\n}\n");
-    const char *path = getenv("PA_FAULT_PATH");
-    FILE *f = fopen(path ? path : "pa_boundary_fault.json", "w");
-    if (f) { fputs(b.s, f); fclose(f); }
-    fprintf(stderr, "[pa boundary fault] %s %s: %s (see pa_boundary_fault.json)\n", direction, worker, violation);
-    fflush(NULL);
-    exit(70);
+    char summary[700];
+    snprintf(summary, sizeof summary, "boundary fault %s %s: %s", direction, worker, violation);
+    pa_fault_raise("pa_boundary_fault.json", summary, b.s);   /* exit(70) in executables; longjmp in shared libs */
 }
 
 /* ---- init --------------------------------------------------------------- */
@@ -194,11 +199,11 @@ void pa_bridge_init(const char *pyhome, const char *pypath, const char *pawdirs)
 }
 
 /* ---- out-bound customs -------------------------------------------------- */
-static void check_out(const char *worker, const PaArg *args, int nargs) {
+static void check_out(const char *worker, const PaArg *args, int nargs, int allow_nan) {
     char msg[200];
     for (int i = 0; i < nargs; i++) {
         const PaArg *a = &args[i];
-        if (!g_allow_nan && a->tag == T_FLOAT && !isfinite(a->f)) {
+        if (!allow_nan && a->tag == T_FLOAT && !isfinite(a->f)) {
             snprintf(msg, sizeof msg, "args[%d]: non-finite value %s", i, isnan(a->f) ? "NaN" : "Inf");
             fault("PA_TO_PY_IN", worker, msg, args, nargs);
         }
@@ -206,7 +211,7 @@ static void check_out(const char *worker, const PaArg *args, int nargs) {
             if (a->n < 0) { snprintf(msg, sizeof msg, "args[%d]: negative length %lld", i, (long long)a->n); fault("PA_TO_PY_IN", worker, msg, args, nargs); }
             if (a->n > 0 && !a->p) { snprintf(msg, sizeof msg, "args[%d]: uninitialized (NULL) pointer with length %lld", i, (long long)a->n); fault("PA_TO_PY_IN", worker, msg, args, nargs); }
         }
-        if (PA_DEEP_CHECKS && !g_allow_nan && a->tag == T_BUF && (a->elem == E_F32 || a->elem == E_F64)) {
+        if (PA_DEEP_CHECKS && !allow_nan && a->tag == T_BUF && (a->elem == E_F32 || a->elem == E_F64)) {
             for (int64_t k = 0; k < a->n; k++) {
                 double v = elem_at(a, k);
                 if (!isfinite(v)) {
@@ -243,7 +248,7 @@ static int is_np_bool(PyObject *o) {
     return strcmp(n, "numpy.bool_") == 0 || strcmp(n, "numpy.bool") == 0;
 }
 
-static void unbox_buffer(PyObject *o, int elem, PaRet *out, const char *worker, const PaArg *args, int nargs) {
+static void unbox_buffer(PyObject *o, int elem, PaRet *out, const char *worker, const PaArg *args, int nargs, int allow_nan) {
     char msg[200];
     int is_float = elem == E_F32 || elem == E_F64;
     Py_buffer view;
@@ -282,7 +287,7 @@ static void unbox_buffer(PyObject *o, int elem, PaRet *out, const char *worker, 
         }
         Py_DECREF(seq);
     }
-    if (PA_DEEP_CHECKS && is_float && !g_allow_nan) {
+    if (PA_DEEP_CHECKS && is_float && !allow_nan) {
         for (int64_t k = 0; k < n; k++) {
             double v = elem == E_F32 ? ((float *)out->p)[k] : ((double *)out->p)[k];
             if (!isfinite(v)) IN_FAULT("return[%lld]: non-finite value %s", (long long)k, isnan(v) ? "NaN" : "Inf");
@@ -291,7 +296,7 @@ static void unbox_buffer(PyObject *o, int elem, PaRet *out, const char *worker, 
     out->n = n;
 }
 
-static void unbox(PyObject *o, int ret_tag, int ret_elem, PaRet *out, const char *worker, const PaArg *args, int nargs) {
+static void unbox(PyObject *o, int ret_tag, int ret_elem, PaRet *out, const char *worker, const PaArg *args, int nargs, int allow_nan) {
     char msg[200];
     memset(out, 0, sizeof *out);
     if (ret_tag == T_VOID) {
@@ -317,20 +322,23 @@ static void unbox(PyObject *o, int ret_tag, int ret_elem, PaRet *out, const char
             IN_FAULT("return: %s drifted from %s", Py_TYPE(o)->tp_name, ELEM_NAME[ret_elem]);
         double v = PyFloat_AsDouble(o);
         if (PyErr_Occurred()) { PyErr_Clear(); IN_FAULT("return: %s not convertible to %s", Py_TYPE(o)->tp_name, ELEM_NAME[ret_elem]); }
-        if (!isfinite(v) && !g_allow_nan) IN_FAULT("return: non-finite value %s", isnan(v) ? "NaN" : "Inf");
+        if (!isfinite(v) && !allow_nan) IN_FAULT("return: non-finite value %s", isnan(v) ? "NaN" : "Inf");
         out->f = v;
     } else {
-        unbox_buffer(o, ret_elem, out, worker, args, nargs);
+        unbox_buffer(o, ret_elem, out, worker, args, nargs, allow_nan);
     }
 }
 
 void pa_call_paw(const char *mod, const char *fn, PaArg *args, int32_t nargs, int32_t ret_tag, int32_t ret_elem, int32_t flags, PaRet *out) {
     char worker[256], msg[512];
-    g_allow_nan = flags & 1;
+    int allow_nan = flags & 1;
     snprintf(worker, sizeof worker, "%s.%s", mod, fn);
-    check_out(worker, args, nargs);
+    check_out(worker, args, nargs, allow_nan);
     if (!g_bridge) pa_bridge_init(PA_PYHOME, PA_PYPATH, PA_PAWDIRS);
+    pa_set_fault_hook(release_gil_hook);
     PyGILState_STATE g = PyGILState_Ensure();
+    g_gil_state = g;
+    g_gil_held = 1;
     PyObject *m = PyObject_CallMethod(g_bridge, "load", "s", mod);
     PyObject *f = m ? PyObject_GetAttrString(m, fn) : NULL;
     PyObject *tup = f ? PyTuple_New(nargs) : NULL;
@@ -348,7 +356,8 @@ void pa_call_paw(const char *mod, const char *fn, PaArg *args, int32_t nargs, in
         snprintf(msg, sizeof msg, "python exception %s: %s", t ? ((PyTypeObject *)t)->tp_name : "?", cs ? cs : "?");
         fault("PY_TO_PA_OUT", worker, msg, args, nargs);
     }
-    unbox(res, ret_tag, ret_elem, out, worker, args, nargs);
+    unbox(res, ret_tag, ret_elem, out, worker, args, nargs, allow_nan);
     Py_DECREF(res); Py_DECREF(tup); Py_DECREF(f); Py_DECREF(m);
+    g_gil_held = 0;
     PyGILState_Release(g);
 }

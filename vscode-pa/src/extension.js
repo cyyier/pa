@@ -26,7 +26,10 @@ async function startClient() {
     'pac',
     'Pa Language Server',
     { command, args: ['lsp'] },
-    { documentSelector: [{ language: 'pa' }, { language: 'paw' }] }
+    {
+      documentSelector: [{ language: 'pa' }, { language: 'paw' }],
+      initializationOptions: { hintDetail: vscode.workspace.getConfiguration('pa').get('inlayHints.detail', 'simple') }
+    }
   );
   try {
     await client.start();
@@ -59,6 +62,14 @@ async function activate(context) {
     vscode.commands.registerCommand('pa.buildDev', () => runInTerminal(['build', '--mode', 'dev'])),
     vscode.commands.registerCommand('pa.buildProd', () => runInTerminal(['build', '--mode', 'prod'])),
     vscode.commands.registerCommand('pa.check', () => runInTerminal(['check', '--ai-diagnostic']))
+  );
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration(async (e) => {
+      if (e.affectsConfiguration('pa.inlayHints.detail') || e.affectsConfiguration('pa.pacPath')) {
+        if (client) await client.stop();
+        await startClient();
+      }
+    })
   );
   await startClient();
 }

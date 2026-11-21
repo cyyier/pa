@@ -14,7 +14,7 @@ from llvmlite import ir
 from .infer import FuncInferer, ModuleInfo, const_value, analyze
 from .paw import ELEM_CODES, PawFunc
 from .types import (BOOL, F32, F64, I32, I64, STR_VIEW, U8, UNKNOWN, VOID, FixedList, Ptr, Span, StackVec,
-                    StructT, Type, Vec, resolve, is_numeric, StrOwned, is_str)
+                    StructT, Type, Vec, resolve, is_numeric, StrOwned, is_str, Scalar)
 
 PTR = ir.PointerType()
 I1, I8, I32T, I64T = ir.IntType(1), ir.IntType(8), ir.IntType(32), ir.IntType(64)
@@ -59,8 +59,9 @@ def ci(n: int, ty=I32T) -> ir.Constant:
 
 
 class ModuleGen:
-    def __init__(self, tree: ast.Module, info: ModuleInfo, filename: str = "<mem>", shared: bool = False):
-        self.tree, self.info, self.shared = tree, info, shared
+    def __init__(self, tree: ast.Module, info: ModuleInfo, filename: str = "<mem>", shared: bool = False,
+                 mode: str = "dev"):
+        self.tree, self.info, self.shared, self.mode = tree, info, shared, mode
         self.m = ir.Module(name=filename)
         self.struct_cache: dict = {}
         self.strings: dict = {}
@@ -72,6 +73,14 @@ class ModuleGen:
         self.free = d("free", VOIDT, [PTR])
         self.printf = d("printf", I32T, [PTR], True)
         self.bcmp = d("bcmp", I32T, [PTR, PTR, I64T])
+        self.rt_fault = d("pa_rt_fault", VOIDT, [PTR, PTR, I64T, PTR])
+        self.rt_index_fault = d("pa_rt_index_fault", VOIDT, [I64T, I64T, I64T, PTR])
+        self.p_i64 = d("pa_print_i64", VOIDT, [I64T])
+        self.p_f64 = d("pa_print_f64", VOIDT, [F64T])
+        self.p_bool = d("pa_print_bool", VOIDT, [I32T])
+        self.p_str = d("pa_print_str", VOIDT, [PTR, I64T])
+        self.p_sep = d("pa_print_sep", VOIDT, [])
+        self.p_nl = d("pa_print_nl", VOIDT, [])
         self.memcpy = d("llvm.memcpy.p0.p0.i64", VOIDT, [PTR, PTR, I64T, I1])
         self.call_paw = d("pa_call_paw", VOIDT, [PTR, PTR, PTR, I32T, I32T, I32T, I32T, PTR])
 
@@ -108,11 +117,12 @@ class ModuleGen:
             self.strings[s] = g
         return self.strings[s]
 
-    @staticmethod
-    def symbol(name: str, exported: bool) -> str:
+    def symbol(self, name: str, exported: bool) -> str:
         if name == "main":
             return "pa_user_main"
-        return name if exported else f"pa_fn_{name}"
+        if exported:
+            return f"pa_impl_{name}" if self.shared else name     # shared libs expose guarded C wrappers
+        return f"pa_fn_{name}"
 
     # ---- driver ------------------------------------------------------
     def reachable(self) -> list:
@@ -137,6 +147,8 @@ class ModuleGen:
             fi = self.info.funcs[n]
             ft = ir.FunctionType(self.lt_ret(fi), [self.param_lt(t, fi.node) for t in fi.params.values()])
             self.fns[n] = ir.Function(self.m, ft, self.symbol(n, fi.exported))
+            if ft.return_type == I1:
+                self.fns[n].return_value.add_attribute("zeroext")
         for n in names:
             FnGen(self, self.info.funcs[n], self.fns[n]).emit()
         if not self.shared:
@@ -201,6 +213,47 @@ class FnGen:
 
     def memcpy(self, dst, src, nbytes):
         self.b.call(self.mg.memcpy, [dst, src, ci(nbytes, I64T) if isinstance(nbytes, int) else nbytes, ir.Constant(I1, 0)])
+
+    def fault(self, kind: str, detail: str, node) -> None:
+        b = self.b
+        b.call(self.mg.rt_fault, [self.mg.cstr(kind), self.mg.cstr(detail), ci(getattr(node, "lineno", 0), I64T),
+                                  self.mg.cstr(self.fi.name)])
+        b.unreachable()
+
+    def guard(self, ok, kind: str, detail: str, node) -> None:
+        """Continue when `ok` (i1) holds, otherwise raise a runtime fault."""
+        good, bad = self.fn.append_basic_block("ok"), self.fn.append_basic_block("fault")
+        self.b.cbranch(ok, good, bad)
+        self.b.position_at_end(bad)
+        self.fault(kind, detail, node)
+        self.b.position_at_end(good)
+
+    def check_index(self, idx, n, node) -> None:
+        """dev mode: 0 <= idx < n (a negative index is out of range by design)."""
+        if self.mg.mode != "dev":
+            return
+        good, bad = self.fn.append_basic_block("idx.ok"), self.fn.append_basic_block("idx.bad")
+        self.b.cbranch(self.b.icmp_unsigned("<", idx, n), good, bad)
+        self.b.position_at_end(bad)
+        self.b.call(self.mg.rt_index_fault, [idx, n, ci(getattr(node, "lineno", 0), I64T), self.mg.cstr(self.fi.name)])
+        self.b.unreachable()
+        self.b.position_at_end(good)
+
+    def narrow_check(self, v, frm: Type, to: Type, node, always: bool, what: str) -> None:
+        """Integer narrowing (i64 -> i32/u8 ...) must not silently truncate."""
+        frm, to = resolve(frm), resolve(to)
+        if not (isinstance(frm, Scalar) and isinstance(to, Scalar) and frm.kind == "int" and to.kind == "int"
+                and to.size < frm.size):
+            return
+        lo, hi = (0, 255) if to == U8 else (-2**31, 2**31 - 1) if to == I32 else (None, None)
+        cv = const_value(node, self.info.consts) if node is not None else None
+        if cv is not None and lo is not None and not (lo <= cv <= hi):
+            raise CodegenError(f"{what}: literal {cv} does not fit {to.name} ({lo}..{hi})", node)
+        if not (always or self.mg.mode == "dev"):
+            return
+        t = self.b.trunc(v, self.lt(to))
+        back = self.b.zext(t, v.type) if to == U8 else self.b.sext(t, v.type)
+        self.guard(self.b.icmp_signed("==", back, v), "OverflowError", f"{what}: value does not fit {to.name}", node)
 
     def terminated(self) -> bool:
         return self.b.block.is_terminated
@@ -315,15 +368,16 @@ class FnGen:
         """Store expression `val` into memory at `ptr` of declared type t (value semantics)."""
         t = resolve(t)
         if not is_agg(t):
-            v = self.coerce(self.value(val), self.ty(val), t)
-            self.b.store(v, ptr)
+            v, vt = self.value(val), self.ty(val)
+            self.narrow_check(v, vt, t, val, False, "assignment")
+            self.b.store(self.coerce(v, vt, t), ptr)
             return
         if isinstance(t, StrOwned) and self.ty(val) == STR_VIEW:
             return self.string_from_view(ptr, self.value(val))
         src = self.addr(val)
         if isinstance(t, (Vec, StackVec)):
             fresh = (isinstance(val, ast.Call) and not (isinstance(val.func, ast.Name) and val.func.id == "mut")) \
-                or (isinstance(val, ast.BinOp) and isinstance(t, StrOwned))
+                or (isinstance(val, ast.BinOp) and isinstance(t, Vec))
             if isinstance(t, Vec) and fresh and fresh_ok:
                 self.free_vec(ptr)
                 self.memcpy(ptr, src, 24)
@@ -487,11 +541,23 @@ class FnGen:
         start, stop, step = (args[0], args[1], args[2]) if len(args) == 3 else \
             (ir.Constant(lt, 0), args[0], ir.Constant(lt, 1)) if len(args) == 1 else (args[0], args[1], ir.Constant(lt, 1))
         self.b.store(start, slot)
-        pos = len(s.iter.args) < 3 or const_value(s.iter.args[2], self.info.consts) is None or \
-            const_value(s.iter.args[2], self.info.consts) > 0
-        op = "<" if pos else ">"
-        self.loop(s, lambda: self.b.icmp_signed(op, self.b.load(slot, typ=lt), stop), lambda: None,
-                  lambda: self.b.store(self.b.add(self.b.load(slot, typ=lt), step), slot))
+        cur = lambda: self.b.load(slot, typ=lt)
+        if len(s.iter.args) < 3:
+            cond = lambda: self.b.icmp_signed("<", cur(), stop)
+        else:
+            cv = const_value(s.iter.args[2], self.info.consts)
+            if cv == 0:
+                self.err("range() step must not be zero", s)
+            if cv is not None:
+                op = "<" if cv > 0 else ">"
+                cond = lambda: self.b.icmp_signed(op, cur(), stop)
+            else:                    # runtime step: decide the direction once, before the loop
+                self.guard(self.b.icmp_signed("!=", step, ir.Constant(lt, 0)), "ValueError",
+                           "range() arg 3 must not be zero", s)
+                up = self.b.icmp_signed(">", step, ir.Constant(lt, 0))
+                cond = lambda: self.b.select(up, self.b.icmp_signed("<", cur(), stop),
+                                             self.b.icmp_signed(">", cur(), stop))
+        self.loop(s, cond, lambda: None, lambda: self.b.store(self.b.add(cur(), step), slot))
 
     def loop(self, s, cond_fn, prologue, step_fn, body=None) -> None:
         cb, bb, sb, eb = (self.fn.append_basic_block(n) for n in ("fcond", "fbody", "fstep", "fend"))
@@ -586,14 +652,26 @@ class FnGen:
         if isinstance(op, ast.FloorDiv):
             if fl:
                 self.err("float // is not supported", node)
-            return b.sdiv(l, r)
-        if isinstance(op, ast.Mod): return b.frem(l, r) if fl else b.srem(l, r)
+            return self.int_divmod(l, r, node, True)
+        if isinstance(op, ast.Mod):
+            return b.frem(l, r) if fl else self.int_divmod(l, r, node, False)
         if fl:
             self.err(f"operator {type(op).__name__} on floats is not supported", node)
         for cls, f in ((ast.BitAnd, b.and_), (ast.BitOr, b.or_), (ast.BitXor, b.xor), (ast.LShift, b.shl), (ast.RShift, b.ashr)):
             if isinstance(op, cls):
                 return f(l, r)
         self.err(f"operator {type(op).__name__} is not supported", node)
+
+    def int_divmod(self, l, r, node, is_div: bool):
+        """Integer // and %: divisor 0 raises ZeroDivisionError; x // -1 and x % -1 cannot trap on INT_MIN."""
+        b = self.b
+        self.guard(b.icmp_signed("!=", r, ir.Constant(r.type, 0)), "ZeroDivisionError",
+                   "integer division or modulo by zero", node)
+        m1 = b.icmp_signed("==", r, ir.Constant(r.type, -1))
+        safe = b.select(m1, ir.Constant(r.type, 1), r)
+        if is_div:
+            return b.select(m1, b.neg(l), b.sdiv(l, safe))
+        return b.select(m1, ir.Constant(r.type, 0), b.srem(l, safe))
 
     # ---- expressions (scalars / views by value) ----------------------
     def value(self, e) -> ir.Value:
@@ -620,6 +698,13 @@ class FnGen:
             return self.b.load(slot, typ=self.lt(t, e))
         if e.id in self.info.consts:
             return ci(self.info.consts[e.id], I32T if self.ty(e) == I32 else I64T)
+        if e.id in self.info.fconsts:
+            val, t = self.info.fconsts[e.id]
+            if t == BOOL:
+                return ir.Constant(I1, int(val))
+            if t == F64:
+                return ir.Constant(F64T, val)
+            return self.v_Constant(ast.Constant(value=val))
         self.err(f"unknown name '{e.id}'", e)
 
     def v_UnaryOp(self, e):
@@ -780,29 +865,23 @@ class FnGen:
         return ir.Constant(I32T, 0)
 
     def i_print(self, e):
-        fmts, args = [], []
-        for a in e.args:
+        b, mg = self.b, self.mg
+        for k, a in enumerate(e.args):
+            if k:
+                b.call(mg.p_sep, [])
             t = self.ty(a)
-            v = self.view_of(a) if is_str(t) else self.value(a)
             if is_str(t):
-                fmts.append("%.*s")
-                args += [self.b.trunc(self.b.extract_value(v, 1), I32T), self.b.extract_value(v, 0)]
+                v = self.view_of(a)
+                b.call(mg.p_str, [b.extract_value(v, 0), b.extract_value(v, 1)])
             elif t == BOOL:
-                fmts.append("%s")
-                args.append(self.b.select(v, self.mg.cstr("True"), self.mg.cstr("False")))
+                b.call(mg.p_bool, [b.zext(self.value(a), I32T)])
             elif t in (F32, F64):
-                fmts.append("%.10g")
-                args.append(self.coerce(v, t, F64))
-            elif t == I64:
-                fmts.append("%lld")
-                args.append(v)
-            elif t in (I32, U8):
-                fmts.append("%d")
-                args.append(self.coerce(v, t, I32))
+                b.call(mg.p_f64, [self.coerce(self.value(a), t, F64)])
+            elif t in (I64, I32, U8):
+                b.call(mg.p_i64, [self.coerce(self.value(a), t, I64)])
             else:
                 self.err(f"print() cannot print a value of type {t.fmt()}", e)
-        fmt = " ".join(fmts) + "\n"
-        self.b.call(self.mg.printf, [self.mg.cstr(fmt)] + args)
+        b.call(mg.p_nl, [])
         return ir.Constant(I32T, 0)
 
     # ---- local calls & paw FFI ---------------------------------------
@@ -817,7 +896,12 @@ class FnGen:
             if a is None:
                 self.err(f"missing argument '{pname}' in call to '{name}'", e)
             pt = callee.params[pname]
-            args.append(self.addr(a) if is_agg(pt) else self.coerce(self.value(a), self.ty(a), pt))
+            if is_agg(pt):
+                args.append(self.addr(a))
+            else:
+                v, at = self.value(a), self.ty(a)
+                self.narrow_check(v, at, pt, a, False, f"argument '{pname}' of {name}()")
+                args.append(self.coerce(v, at, pt))
         return self.b.call(self.mg.fns[name], args)
 
     def paw_call(self, e):
@@ -853,7 +937,9 @@ class FnGen:
             ptr, n, _ = self.seq_view(a)
             vals = (TAG_BUF, ELEM_CODES[pt.elem.name], 0, 0.0, ptr, n)
         else:
-            v = self.coerce(self.value(a), at, pt)
+            v0 = self.value(a)
+            self.narrow_check(v0, at, pt, a, True, f"argument {pt.name} of .paw call")
+            v = self.coerce(v0, at, pt)
             elem = ELEM_CODES[pt.name]
             if pt == BOOL:
                 vals = (TAG_BOOL, elem, b.zext(v, I64T), 0.0, None, 0)
@@ -945,8 +1031,10 @@ class FnGen:
         if not (isinstance(e.op, ast.Mult) and isinstance(e.left, ast.List)):
             self.err("aggregate arithmetic is not supported", e)
         t = self.ty(e)
+        if isinstance(t, Vec):
+            return self.heap_repeat(e, t)
         if not isinstance(t, FixedList):
-            self.err("repeated list exceeds the 64KB stack limit", e)
+            self.err("unsupported list repetition", e)
         tmp = self.alloca(self.lt(t, e), "rep")
         k = len(e.left.elts)
         reps = t.n // k
@@ -959,6 +1047,28 @@ class FnGen:
         self.loop(ast.Pass(), lambda: self.b.icmp_signed("<", self.b.load(i, typ=I64T), ci(reps, I64T)),
                   lambda: self.fill_repeat(tmp, t, e, self.b.load(i, typ=I64T), k),
                   lambda: self.b.store(self.b.add(self.b.load(i, typ=I64T), ci(1, I64T)), i), body=[])
+        return tmp
+
+    def heap_repeat(self, e, t: Vec):
+        """`[x] * N` above the 64KB stack limit: contiguous heap Vec (owned by the receiving variable)."""
+        b = self.b
+        k = len(e.left.elts)
+        reps = const_value(e.right, self.info.consts)
+        total = reps * k
+        data = b.call(self.mg.malloc, [ci(max(total * t.elem.size, 1), I64T)])
+        tmp = self.alloca(VEC, "bigrep")
+        self.store_vec_header(b, tmp, data, total, total)
+        i = self.alloca(I64T, "rep.i")
+        b.store(ci(0, I64T), i)
+
+        def body():
+            rep = b.load(i, typ=I64T)
+            for j, x in enumerate(e.left.elts):
+                idx = b.add(b.mul(rep, ci(k, I64T)), ci(j, I64T))
+                self.store_to(b.gep(data, [idx], inbounds=True, source_etype=self.lt(t.elem)), t.elem, x)
+
+        self.loop(ast.Pass(), lambda: b.icmp_signed("<", b.load(i, typ=I64T), ci(reps, I64T)), body,
+                  lambda: b.store(b.add(b.load(i, typ=I64T), ci(1, I64T)), i), body=[])
         return tmp
 
     def fill_repeat(self, tmp, t, e, rep, k) -> None:
@@ -977,12 +1087,22 @@ class FnGen:
             return self.b.gep(self.addr(e.value), [ci(0), ci(idx)], inbounds=True, source_etype=self.lt(bt))
         if isinstance(e.slice, ast.Slice):
             self.err("slices are not supported (use span(arr, start, len))", e)
-        ptr, _, elem = self.seq_view(e.value)
+        base_t = self.ty(e.value)
+        ptr, n, elem = self.seq_view(e.value)
         idxs = e.slice.elts if isinstance(e.slice, ast.Tuple) else [e.slice]
-        ptr = self.b.gep(ptr, [self.index_value(idxs[0])], inbounds=True, source_etype=self.lt(elem))
+        idx = self.index_value(idxs[0])
+        self.static_index_check(idxs[0], base_t, e)
+        if not isinstance(base_t, Ptr):
+            self.check_index(idx, n, e)
+        ptr = self.b.gep(ptr, [idx], inbounds=True, source_etype=self.lt(elem))
         for ix in idxs[1:]:                     # m[i, j]: descend one dimension per extra index
             ptr, elem = self.index_into(ptr, elem, ix, e)
         return ptr
+
+    def static_index_check(self, ix, container: Type, node) -> None:
+        cv = const_value(ix, self.info.consts)
+        if cv is not None and isinstance(container, FixedList) and not (0 <= cv < container.n):
+            raise CodegenError(f"constant index {cv} is out of range for a list of length {container.n}", node)
 
     def index_value(self, ix):
         return self.coerce(self.value(ix), self.ty(ix), I64)
@@ -990,10 +1110,16 @@ class FnGen:
     def index_into(self, ptr, cur: Type, ix, node):
         b = self.b
         if isinstance(cur, FixedList):
-            return b.gep(ptr, [self.index_value(ix)], inbounds=True, source_etype=self.lt(cur.elem)), cur.elem
+            idx = self.index_value(ix)
+            self.static_index_check(ix, cur, node)
+            self.check_index(idx, ci(cur.n, I64T), node)
+            return b.gep(ptr, [idx], inbounds=True, source_etype=self.lt(cur.elem)), cur.elem
         if isinstance(cur, (Vec, StackVec)):
             data = b.load(b.gep(ptr, [ci(0), ci(0)], inbounds=True, source_etype=VEC), typ=PTR)
-            return b.gep(data, [self.index_value(ix)], inbounds=True, source_etype=self.lt(cur.elem)), cur.elem
+            n = b.load(b.gep(ptr, [ci(0), ci(1)], inbounds=True, source_etype=VEC), typ=I64T)
+            idx = self.index_value(ix)
+            self.check_index(idx, n, node)
+            return b.gep(data, [idx], inbounds=True, source_etype=self.lt(cur.elem)), cur.elem
         self.err(f"cannot index into {cur.fmt()} with an extra subscript", node)
 
     def seq_view(self, e):
@@ -1015,8 +1141,9 @@ class FnGen:
         self.err(f"'{ast.unparse(e)}' of type {t.fmt()} is not list-like", e)
 
 
-def generate(tree: ast.Module, info: ModuleInfo, filename: str = "<mem>", shared: bool = False) -> tuple:
+def generate(tree: ast.Module, info: ModuleInfo, filename: str = "<mem>", shared: bool = False,
+             mode: str = "dev") -> tuple:
     """Return (llvm_ir_text, set_of_paw_modules_used)."""
-    mg = ModuleGen(tree, info, filename, shared)
+    mg = ModuleGen(tree, info, filename, shared, mode)
     text = mg.emit()
     return text, mg.paw_used

@@ -4,7 +4,7 @@ Minimal local extension for `.pa` / `.paw` files.
 
 - **Languages**: `pa` (`.pa`) and `paw` (`.paw`). Both TextMate grammars *inherit Python's* (`source.pa` → `source.python`, `source.paw` → `source.pa`).
 - **Dedicated colours**: compiler intrinsics `mut span copy alloc free py_call`, decorators `@struct @export @allow_nan`, and the Pa types `i32 i64 u8 f32 f64 str_view bytes_view void Vec[...] ptr[...] span[...]`.
-- **Language server** (`pac lsp`): inferred-type **inlay hints** (`: list[f64, 16] (128B flat)`, `: StackVec<i64, max=64> (Zero-Heap)`, `[🌉 .paw FFI -> f64]`), **hover memory-audit card** (LLVM layout, bytes, stride, stack/heap, RAII free lines, complexity) and live **diagnostics**.
+- **Language server** (`pac lsp`): inferred-type **inlay hints** — by default only Python names (`: int`, `: float`, `: list[float]`, `: str`, `[🌉 .paw → float]`; narrow types stay loud: `: i32`, `: u8`); set `pa.inlayHints.detail` to `detailed` for sizes and memory strategy (`: list[float, 16] (128B flat)`, `(Zero-Heap)`, `[free: RAII]`), **hover memory-audit card** (LLVM layout, bytes, stride, stack/heap, RAII free lines, complexity) and live **diagnostics**.
 - **Commands**: *Pa: Restart Language Server*, *Pa: Build Current File (dev|prod)*, *Pa: Check Current File (--ai-diagnostic)*.
 
 ## Install

@@ -4,7 +4,8 @@ N = 64
 WINDOW = 4
 
 
-def moving_average(xs) -> Vec[f64]:
+# sliding-window mean of WINDOW samples; the result has len(xs) - WINDOW entries
+def moving_average(xs) -> Vec[float]:
     out = []
     for i in range(N - WINDOW):
         s = 0.0
@@ -14,7 +15,7 @@ def moving_average(xs) -> Vec[f64]:
     return out
 
 
-def main() -> i64:
+def main() -> int:
     series = data_fetcher.fetch_series(N, 7)
     smooth = moving_average(series)
     p90 = data_fetcher.percentile(smooth, 90.0)

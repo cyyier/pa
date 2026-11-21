@@ -72,7 +72,7 @@ def test_2d_index_matrix(tmp_path):
                     s += m[i, j]
             return s
     """)
-    assert r.stdout.split("\n")[:2] == ["23 112 238", "4100"]
+    assert r.stdout.split("\n")[:2] == ["23.0 112.0 238.0", "4100.0"]
 
 
 def test_string_concat_index_compare(tmp_path):
@@ -394,4 +394,66 @@ def test_numeric_returns_are_coerced_to_declared_type(tmp_path):
             print(half(0))
             return 0
     """)
-    assert r.stdout.strip() == "1"
+    assert r.stdout.strip() == "1.0"
+
+
+# ---------------------------------------------------------------- Python-flavoured int / float
+def test_int_float_aliases_and_python_flavoured_display():
+    from pa_lang.types import F64, I32, I64, display, parse_annotation, FixedList, StackVec, U8
+    import ast as _ast
+    assert parse_annotation(_ast.parse("int", mode="eval").body, {}) == I64
+    assert parse_annotation(_ast.parse("float", mode="eval").body, {}) == F64
+    assert parse_annotation(_ast.parse("list[float, 4]", mode="eval").body, {}) == FixedList(F64, 4)
+    assert [display(t) for t in (I64, F64, I32, U8)] == ["int", "float", "i32", "u8"]
+    assert display(StackVec(I64, 8)) == "StackVec<int, max=8>"
+    assert codes("def f(x) -> int:\n    return 1\n\ndef g() -> float:\n    return 1.5\n") == []
+    assert "PA_E085" in codes('def f() -> int:\n    return "x"\n')
+
+
+def test_alias_in_export_struct_and_paw_signatures(tmp_path):
+    assert codes("@struct\nclass P:\n    x: float\n    n: int\n\n@export\ndef f(a: int, b: float) -> float:\n    return b\n") == []
+    assert codes("import numpy as np\n\ndef f(a: span[float], k: int) -> Vec[float]:\n    return a * k\n", "w.paw") == []
+    r = run_pa(tmp_path, """
+        import w
+
+        def main() -> int:
+            xs = [1.0, 2.0, 3.0]
+            ys = w.scale(xs, 2)
+            print(len(ys), ys[2])
+            return 0
+    """, paws={"w": "def scale(a: span[float], k: int) -> Vec[float]:\n    return [x * k for x in a]\n"})
+    assert r.stdout.strip() == "3 6.0"
+
+
+def test_inlay_hints_use_python_names_but_keep_narrow_types():
+    from pa_lang.lsp_server import DocAnalysis
+    src = ("@struct\nclass P:\n    a: i32\n    b: u8\n\ndef main() -> int:\n    n = 3\n    f = 1.5\n"
+           "    p = P(a=1, b=2)\n    w = p.a\n    c = p.b\n    return n\n")
+    da = DocAnalysis(src, "t.pa")
+    labels = {t for _, _, t in da.hints()}
+    assert ": int" in labels and ": float" in labels and ": P" in labels
+    assert ": i32" in labels and ": u8" in labels                    # narrow types stay loud
+    md = da.hover(10, 4)                                             # 'c' : u8
+    assert "u8 (1B, stack)" in md and "narrow type" in md
+
+
+def test_simple_display_names():
+    from pa_lang.types import (F32, F64, I32, I64, STR_VIEW, U8, FixedList, StackVec, StrOwned, Vec, simple_display)
+    assert simple_display(FixedList(F64, 16)) == "list[float]"
+    assert simple_display(StackVec(I64, 64)) == "list[int]"
+    assert simple_display(Vec(F32)) == "list[f32]"          # narrow element types stay visible
+    assert simple_display(StrOwned()) == "str" and simple_display(STR_VIEW) == "str"
+    assert [simple_display(t) for t in (I64, F64, I32, U8)] == ["int", "float", "i32", "u8"]
+
+
+def test_web_pa_fault_becomes_http_400_and_server_survives(web_client):
+    r = web_client.post("/ratio", json={"a": 7, "b": 2})
+    assert r.status_code == 200 and r.json() == {"ratio": 3}
+    r = web_client.post("/ratio", json={"a": 7, "b": 0})
+    assert r.status_code == 400 and r.json()["detail"]["pa_error"] == "ZeroDivisionError"
+    assert web_client.post("/ratio", json={"a": 9, "b": 3}).json() == {"ratio": 3}      # still alive and clean
+    r = web_client.post("/at", json={"values": [1.0, 2.0], "index": 5})
+    assert r.status_code == 400 and r.json()["detail"]["pa_error"] == "IndexError"
+    r = web_client.post("/at", json={"values": [1.0, 2.0], "index": -1})
+    assert r.status_code == 400                         # negative index is out of range by design
+    assert web_client.post("/at", json={"values": [1.0, 2.0], "index": 1}).json() == {"value": 2.0}

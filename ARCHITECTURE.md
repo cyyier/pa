@@ -90,3 +90,39 @@ Pa Language (.pa) — 完整架构与工程规范Slogan: Inspired by Python, 100
 - 任何 `.pa` 函数都允许并**默认要求**写 `-> T`（`f64`、`i64`、`Vec[T]`、`list[T, N]`、`void`、`@struct` 名）；形参仍不标注（仅 `@export` / `.paw` 完整标注）。
 - 编译器把声明与推导结果对照：不一致报 `PA_E085`（附带按推导结果改写注解的补丁）；数值类型之间不报错，按声明类型做隐式转换（如 `-> f64` 返回整数）；未知类型名同样报 `PA_E085`。声明的返回类型同时用于递归调用与 `@export` ABI。
 - 三个 Skill 与示例（benchmark、pipeline_demo）已改为默认写 `-> T`。
+
+### 修订 R9：LSP 自动重启
+`pac lsp` 启动后每秒检查 `pa_lang/` 下 `*.py` / `*.c` 的修改时间与大小，一旦变化（去抖 0.5 秒）便正常退出；VS Code 的语言客户端检测到连接关闭会自动拉起新进程，因此改动编译器后编辑器里不再残留旧版诊断。`PA_LSP_AUTORELOAD=0` 可关闭，`PA_LSP_WATCH_DIR` 可改监视目录（测试用）。客户端默认在 3 分钟内最多自动重启 4 次，超出后用 “Pa: Restart Language Server”。
+
+### 修订 R10：默认类型用 Python 叫法
+- 别名：`int` ≡ `i64`、`float` ≡ `f64`（注解、`@struct` 字段、`@export` / `.paw` 签名、`list[float, N]`、`Vec[int]`、`span[float]` 均可用）。`i32` / `u8` / `f32` 只在刻意要窄类型时使用。
+- 行内虚拟提示：默认宽度显示 Python 名（`: int`、`: float`、`: list[float, 16] (128B flat)`、`: StackVec<int, max=64> (Zero-Heap)`、`[🌉 .paw FFI -> float]`）；窄类型照常显示 `: i32` / `: u8` / `: f32` 作为醒目提醒。
+- 悬浮卡片：首行 `int (i64, 8B, stack)` / `list[float, 16] (list[f64, 16], 128B, stack)`，窄类型另加 “narrow type” 提示；其后是 LLVM 布局、字节数与步长、存储位置、RAII `free` 行号、圈复杂度。
+- 诊断修复补丁（`PA_E085` 等）中的注解同样以 Python 名拼写。
+
+### 修订 R11：默认提示再减负 + 单行注释硬规矩
+- **行内提示分两档**（`pa.inlayHints.detail`，默认 `simple`；经 LSP `initializationOptions.hintDetail` 传给服务端，切换设置会自动重启服务）：
+  - `simple`（默认）：只写 Python 名，不带尺寸/存储类：`: int`、`: float`、`: bool`、`: str`、`: list[float]`（定长数组、栈上向量、堆 Vec 一律 `list[...]`）、`: 结构体名`、`[🌉 .paw → float]`；窄类型依然显形（`: i32`、`: u8`、`: list[f32]`）。`[free: RAII]`、`[memcpy ..]` 不再显示（>4KB 拷贝仍有 `PA_W001`）。
+  - `detailed`：`: list[float, 16] (128B flat)`、`: StackVec<int, max=64> (Zero-Heap)`、`: Vec<int> (RAII)`、`[free: RAII]`、`[memcpy 128B]`、`[🌉 .paw FFI -> float]`。
+  - 内存细节统一放进悬浮卡片（`int (i64, 8B, stack)`、LLVM 布局、步长、RAII 释放行、复杂度）。
+- **Skill 硬规矩**：凡不好理解或操作复杂的函数（模/位/溢出敏感运算与技巧算法、手动内存 `alloc/free/span/copy/mut()` 转手、`.paw` 桥接与批处理、刻意的窄类型、圈复杂度 ≥ 5 等），`def` 正上方必须有且仅有一行 `# …` 注释（≤ 100 字符，写意图/陷阱而非复述代码）；平凡函数不写。三个 Skill 与示例已按此执行。
+
+### 修订 R12：边界条件加固（全部 P0 + 3 条 P1）
+| 项 | 处理 |
+|---|---|
+| 整数 `//` `%` 除零 | 两种模式都检查，`ZeroDivisionError`；`INT_MIN // -1` 不再陷阱。浮点除零仍按 IEEE 得 `inf`/`nan`（与 Python 不同，已写入 Skill） |
+| 下标越界 / 负下标 | **负下标视为越界，不折算 `len + i`**。dev 模式对每个变量下标（含 `m[i, j]` 逐维、`span`、`str`）做无符号 `idx < len` 检查，违例 `IndexError`；prod 不检查。常量负下标 `PA_E073`，常量下标越过定长数组为编译错误 |
+| `[x] * N` 超过 64KB | 自动落到堆上 `Vec`（RAII 释放，可 `return`），二维同理 |
+| 变量类型变化 | `PA_E086`（含定长数组长度变化），不再让 LLVM 崩溃 |
+| `range` 变量步长 | 进入循环前判断：`step == 0` → `ValueError`，`> 0` 递增，`< 0` 递减；常量 0 为编译错误 |
+| 遍历时修改同一列表 | `PA_E087`（`append` / `mut()` / 重新绑定） |
+| 可能未赋值就使用 | `PA_E088`（按 if/else 交集、循环体不计入的定值分析） |
+| 别名 `f(v, mut(v))` | `PA_E089`（同一调用里同一变量既 `mut()` 又再次出现） |
+| 窄类型截断 | 传给 `.paw` 的 `u8`/`i32` 参数始终做范围检查（`OverflowError`），不适配的字面量编译期报错；dev 模式下赋值/传参/结构体字段也检查；浮点不再允许传给整数形参（`PA_E090`） |
+| 模块级常量 | 支持 `int` / `float` / `bool` / `str` 及其常量算术 |
+| `print` | 与 Python `repr` 对齐（最短往返浮点、`15.0`、`1e+20`、`True`） |
+| 共享库不再杀宿主 | `@export` 函数由 C 包装器（`setjmp` 守卫）调用；故障时返回 0 并记录错误，宿主用 `pa_error_code()` / `pa_error_message()` / `pa_error_json()` / `pa_error_clear()` 读取；`.paw` 桥接故障先释放 GIL 再回跳。FastAPI 示例把故障转成 HTTP 400 |
+| `@allow_nan` 竞态 | 标志改为按调用传参，不再使用全局变量 |
+| 运行时 | 新增 `runtime_core.c`（无 Python 依赖、始终链接）：故障、守卫、print 助手；运行时故障写 `pa_runtime_fault.json`（含 `mode`、`kind`、`detail`、`function`、`line`） |
+
+仍搁置的 P2：绝对路径烘焙、冷启动、`pa_boundary_fault.json` 并发覆盖、栈上向量的深递归栈溢出（待发版/部署阶段处理）。

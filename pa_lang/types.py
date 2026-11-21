@@ -191,6 +191,39 @@ def _round_up(x: int, a: int) -> int:
     return (x + a - 1) // a * a
 
 
+_PY_NAMES = {"i64": "int", "f64": "float"}
+
+
+def display(t: Type) -> str:
+    """Python-flavoured spelling: defaults show as int/float; narrow widths (i32 u8 f32) keep their real name."""
+    t = resolve(t)
+    if isinstance(t, Scalar):
+        return _PY_NAMES.get(t.name, t.name)
+    if isinstance(t, StrOwned):
+        return "String"
+    if isinstance(t, FixedList):
+        return f"list[{display(t.elem)}, {t.n}]"
+    if isinstance(t, StackVec):
+        return f"StackVec<{display(t.elem)}, max={t.max_n}>"
+    if isinstance(t, Vec):
+        return f"Vec<{display(t.elem)}>"
+    if isinstance(t, (Ptr, Span)):
+        return f"{'ptr' if isinstance(t, Ptr) else 'span'}[{display(t.elem)}]"
+    return t.fmt()
+
+
+def simple_display(t: Type) -> str:
+    """Lowest-cognitive-load spelling for default inlay hints: Python names, no sizes / storage classes."""
+    t = resolve(t)
+    if isinstance(t, (StrOwned, ViewT)) and t.fmt() in ("String", "str_view"):
+        return "str"
+    if isinstance(t, (FixedList, Vec, StackVec)):
+        return f"list[{simple_display(t.elem)}]"
+    if isinstance(t, (Ptr, Span)):
+        return f"{'ptr' if isinstance(t, Ptr) else 'span'}[{simple_display(t.elem)}]"
+    return display(t)
+
+
 def resolve(t: Type) -> Type:
     """Collapse DynList placeholders to their final storage type."""
     if isinstance(t, DynList):
@@ -201,7 +234,7 @@ def resolve(t: Type) -> Type:
 SCALARS = {t.name: t for t in (I32, I64, U8, F32, F64, BOOL, VOID)}
 SCALARS["str_view"] = STR_VIEW
 SCALARS["bytes_view"] = BYTES_VIEW
-SCALARS["int"] = I32
+SCALARS["int"] = I64          # Python-flavoured aliases of the default widths
 SCALARS["float"] = F64
 
 AGGREGATES = (FixedList, StackVec, Vec, StructT)

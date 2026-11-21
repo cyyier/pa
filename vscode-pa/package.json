@@ -28,6 +28,16 @@
     "configuration": {
       "title": "Pa",
       "properties": {
+        "pa.inlayHints.detail": {
+          "type": "string",
+          "enum": ["simple", "detailed"],
+          "default": "simple",
+          "enumDescriptions": [
+            "Python-style names only: `: int`, `: float`, `: list[float]`, `: str`; narrow types stay loud (`: i32`, `: u8`). Memory details live in the hover card.",
+            "Also show sizes and memory strategy: `: list[float, 16] (128B flat)`, `(Zero-Heap)`, `[free: RAII]`, `[memcpy ..]`."
+          ],
+          "description": "How much the inline type hints show."
+        },
         "pa.pacPath": {
           "type": "string",
           "default": "pac",

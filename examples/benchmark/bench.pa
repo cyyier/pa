@@ -2,7 +2,8 @@ N = 50000000
 MOD = 2147483648
 
 
-def lcg_sum(n) -> i64:
+# 31-bit LCG: x * 1103515245 overflows 32 bits, so it relies on the default 64-bit int
+def lcg_sum(n) -> int:
     x = 12345
     s = 0
     for i in range(n):
@@ -11,7 +12,8 @@ def lcg_sum(n) -> i64:
     return s
 
 
-def leibniz(n) -> f64:
+# Leibniz series for pi: alternating 1/(2i+1) terms, multiplied by 4 at the end
+def leibniz(n) -> float:
     s = 0.0
     sign = 1.0
     for i in range(n):
@@ -20,7 +22,7 @@ def leibniz(n) -> f64:
     return 4.0 * s
 
 
-def main() -> i64:
+def main() -> int:
     print(lcg_sum(N))
     print(leibniz(N))
     return 0

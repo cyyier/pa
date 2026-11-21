@@ -164,7 +164,7 @@ def test_implicit_heap_slice_and_concat():
 def test_hints_for_lsp():
     mod, _ = run("def f():\n    a = [0.0] * 16\n    return 0\n")
     texts = [t for _, _, t in mod.funcs["f"].hints]
-    assert ": list[f64, 16] (128B flat)" in texts
+    assert ": list[float, 16] (128B flat)" in texts
 
 
 def test_paw_call_typed_statically(tmp_path):

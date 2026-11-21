@@ -37,7 +37,7 @@ def test_scalars_loops_and_fixed_list(tmp_path):
             print(k, 7 // 2, 7 % 4, 7 / 2)
             return 0
     """)
-    assert r.stdout.split("\n")[:2] == ["15", "3 3 3 3.5"]
+    assert r.stdout.split("\n")[:2] == ["15.0", "3 3 3 3.5"]
 
 
 def test_struct_and_stack_vec_and_heap_vec(tmp_path):
@@ -110,7 +110,7 @@ def test_alloc_free_and_span(tmp_path):
             free(p)
             return 0
     """)
-    assert r.stdout.strip() == "4.5 2 2"
+    assert r.stdout.strip() == "4.5 2.0 2"
 
 
 def test_exit_code_from_main(tmp_path):
@@ -136,7 +136,7 @@ def test_paw_numpy_zero_copy_roundtrip(tmp_path):
         def scale(arr: span[f64], k: f64) -> Vec[f64]:
             return np.frombuffer(arr, dtype=np.float64) * k
     """})
-    assert r.stdout.strip() == "10 4 8"
+    assert r.stdout.strip() == "10.0 4 8.0"
 
 
 def test_paw_string_and_int_args(tmp_path):

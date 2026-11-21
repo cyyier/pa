@@ -2,16 +2,21 @@
 from __future__ import annotations
 
 import ast
+import os
 import re
+import sys
+import threading
+import time
 from typing import Optional
 from urllib.parse import unquote, urlparse
 
 from .diagnostics import DiagnosticSink
 from .infer import FuncInfo, ModuleInfo, analyze
-from .types import FixedList, StackVec, StructT, Vec, resolve
+from .types import FixedList, Scalar, StackVec, StructT, Vec, display, resolve, simple_display
 from .validator import check_source, complexity, default_search_dirs
 
-PAW_ICON = "[🌉 .paw FFI -> {ret}]"
+PAW_ICON = "[🌉 .paw FFI -> {ret}]"          # detailed
+PAW_ICON_SIMPLE = "[🌉 .paw → {ret}]"         # default
 
 
 def uri_to_path(uri: str) -> str:
@@ -22,8 +27,9 @@ def uri_to_path(uri: str) -> str:
 class DocAnalysis:
     """Everything the LSP needs for one document version (pure Python, unit-testable)."""
 
-    def __init__(self, source: str, path: str):
+    def __init__(self, source: str, path: str, detail: str = "simple"):
         self.source, self.path = source, path
+        self.detail = "detailed" if detail == "detailed" else "simple"
         self.lines = source.splitlines()
         self.diags = check_source(source, path)
         self.info: Optional[ModuleInfo] = None
@@ -41,9 +47,12 @@ class DocAnalysis:
         out = []
         if not self.info:
             return out
+        detailed = self.detail == "detailed"
         for fi in self.info.funcs.values():
-            for line, name, text in fi.hints:
+            for line, name, text in (fi.hints if detailed else fi.hints_simple):
                 out.append((line - 1, self.hint_col(line, name), text))
+            if not detailed:          # simple mode: memory-strategy notes live in the hover card
+                continue
             for line in fi.raii_free_lines:
                 if 1 <= line <= len(self.lines):
                     out.append((line - 1, len(self.lines[line - 1]), "[free: RAII]"))
@@ -62,8 +71,10 @@ class DocAnalysis:
                     and n.func.value.id in self.info.paw:
                 pm = self.info.paw[n.func.value.id]
                 pf = pm.funcs.get(n.func.attr)
-                ret = pf.ret.fmt() if pf else "?"
-                out.append((n.end_lineno - 1, n.end_col_offset, " " + PAW_ICON.format(ret=ret)))
+                detailed = self.detail == "detailed"
+                ret = (display if detailed else simple_display)(pf.ret) if pf else "?"
+                icon = PAW_ICON if detailed else PAW_ICON_SIMPLE
+                out.append((n.end_lineno - 1, n.end_col_offset, " " + icon.format(ret=ret)))
         return out
 
     # ---- hover --------------------------------------------------------
@@ -102,8 +113,13 @@ class DocAnalysis:
         stride = getattr(getattr(t, "elem", None), "size", None)
         where = {"stack": "stack (Zero-Heap)", "heap": "heap Vec<T> (RAII)", "param": "borrowed parameter",
                  "scalar": "register / stack slot"}.get(loc.storage, loc.storage)
-        rows = [f"**{loc.name}**: `{t.fmt()}`", "",
-                f"- LLVM layout: `{llvm_t}`",
+        short = {"stack": "stack", "scalar": "stack", "heap": "heap", "param": "param"}.get(loc.storage, loc.storage)
+        shown, real = display(t), t.fmt()
+        head = f"{shown} ({real}, {t.size}B, {short})" if shown != real else f"{shown} ({t.size}B, {short})"
+        rows = [f"**{loc.name}**: `{head}`", ""]
+        if isinstance(t, Scalar) and t.name in ("i32", "u8", "f32"):
+            rows += [f"> narrow type `{t.name}`: watch for overflow / precision loss (chosen for size or C ABI)", ""]
+        rows += [f"- LLVM layout: `{llvm_t}`",
                 f"- size: **{t.size} B**" + (f", element stride: **{stride} B**" if stride else ""),
                 f"- storage: {where}" + (" -- ownership transferred to caller" if loc.escapes else "")]
         if loc.storage == "heap" and not loc.escapes and fi.raii_free_lines:
@@ -119,13 +135,20 @@ def build_server():
 
     server = LanguageServer("pac-lsp", "0.1.0")
     cache: dict = {}
+    options = {"detail": "simple"}
+
+    @server.feature(types.INITIALIZE)
+    def on_initialize(params):
+        opts = params.initialization_options or {}
+        if isinstance(opts, dict) and opts.get("hintDetail") in ("simple", "detailed"):
+            options["detail"] = opts["hintDetail"]
 
     def analysis(uri: str) -> DocAnalysis:
         doc = server.workspace.get_text_document(uri)
         key = (uri, doc.version)
         if key not in cache:
             cache.clear()
-            cache[key] = DocAnalysis(doc.source, uri_to_path(uri))
+            cache[key] = DocAnalysis(doc.source, uri_to_path(uri), options["detail"])
         return cache[key]
 
     def publish(uri: str) -> None:
@@ -159,7 +182,50 @@ def build_server():
     return server
 
 
+class SourceWatcher:
+    """Detects edits to the compiler's own source files (*.py, *.c) so a stale server never lingers."""
+
+    def __init__(self, directory: Optional[str] = None):
+        self.dir = directory or os.path.dirname(os.path.abspath(__file__))
+        self.snapshot = self.scan()
+
+    def scan(self) -> dict:
+        out = {}
+        for name in sorted(os.listdir(self.dir)):
+            if name.endswith((".py", ".c")):
+                try:
+                    st = os.stat(os.path.join(self.dir, name))
+                    out[name] = (st.st_mtime_ns, st.st_size)
+                except OSError:
+                    pass
+        return out
+
+    def changed(self) -> bool:
+        return self.scan() != self.snapshot
+
+    def run(self, on_change, interval: float = 1.0, debounce: float = 0.5) -> None:
+        while True:
+            time.sleep(interval)
+            if self.changed():
+                time.sleep(debounce)           # let multi-file edits / saves settle
+                on_change()
+                return
+
+
+def _exit_for_restart() -> None:
+    sys.stderr.write("pac lsp: compiler sources changed, exiting so the client restarts a fresh server\n")
+    sys.stderr.flush()
+    os._exit(0)
+
+
 def main() -> None:
+    """Start the server. Auto-exits when pa_lang sources change (VS Code's client restarts it).
+
+    Disable with PA_LSP_AUTORELOAD=0; PA_LSP_WATCH_DIR overrides the watched directory (tests).
+    """
+    if os.environ.get("PA_LSP_AUTORELOAD", "1") != "0":
+        watcher = SourceWatcher(os.environ.get("PA_LSP_WATCH_DIR"))
+        threading.Thread(target=watcher.run, args=(_exit_for_restart,), daemon=True).start()
     build_server().start_io()
 
 

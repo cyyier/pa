@@ -88,9 +88,9 @@ def test_lsp_roundtrip(tmp_path):
             "textDocument": {"uri": uri},
             "range": {"start": {"line": 0, "character": 0}, "end": {"line": 20, "character": 0}}})["result"]
         labels = [h["label"] if isinstance(h["label"], str) else "".join(p["value"] for p in h["label"]) for h in hints]
-        assert ": list[f64, 16] (128B flat)" in labels
-        assert any("[🌉 .paw FFI -> f64]" in l for l in labels)
-        assert any("Zero-Heap" in l for l in labels)
+        assert ": list[float]" in labels and ": list[int]" in labels
+        assert any("[🌉 .paw → float]" in l for l in labels)
+        assert not any("flat" in l or "Zero-Heap" in l for l in labels)
 
         hover = c.request("textDocument/hover", {"textDocument": {"uri": uri},
                                                  "position": {"line": 3, "character": 5}})["result"]
@@ -108,3 +108,60 @@ def test_lsp_roundtrip(tmp_path):
         assert c.p.wait(timeout=10) == 0
     finally:
         c.p.kill()
+
+
+def test_detailed_hints_via_initialization_options(tmp_path):
+    (tmp_path / "np_ops.paw").write_text("def sum_array(arr: span[f64]) -> f64:\n    return 0.0\n")
+    main = tmp_path / "main.pa"
+    main.write_text(SRC)
+    c = Client()
+    try:
+        c.request("initialize", {"processId": None, "rootUri": tmp_path.as_uri(), "capabilities": {},
+                                 "initializationOptions": {"hintDetail": "detailed"}})
+        c.notify("initialized", {})
+        c.notify("textDocument/didOpen", {"textDocument": {"uri": main.as_uri(), "languageId": "pa", "version": 1, "text": SRC}})
+        hints = c.request("textDocument/inlayHint", {
+            "textDocument": {"uri": main.as_uri()},
+            "range": {"start": {"line": 0, "character": 0}, "end": {"line": 20, "character": 0}}})["result"]
+        labels = [h["label"] for h in hints]
+        assert ": list[float, 16] (128B flat)" in labels and any("FFI -> float" in l for l in labels)
+        c.request("shutdown", None)
+        c.notify("exit", None)
+    finally:
+        c.p.kill()
+
+
+def test_source_watcher_detects_edits(tmp_path):
+    from pa_lang.lsp_server import SourceWatcher
+    (tmp_path / "a.py").write_text("x = 1\n")
+    w = SourceWatcher(str(tmp_path))
+    assert not w.changed()
+    (tmp_path / "a.py").write_text("x = 22\n")
+    assert w.changed()
+    w2 = SourceWatcher(str(tmp_path))
+    (tmp_path / "new.c").write_text("//\n")
+    assert w2.changed()
+
+
+def test_server_exits_when_sources_change_and_can_be_disabled(tmp_path):
+    import os
+    import time
+    watch = tmp_path / "src"
+    watch.mkdir()
+    (watch / "m.py").write_text("a = 1\n")
+    env = dict(os.environ, PA_LSP_WATCH_DIR=str(watch))
+    p = subprocess.Popen([sys.executable, "-m", "pa_lang.cli", "lsp"], stdin=subprocess.PIPE,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    q = subprocess.Popen([sys.executable, "-m", "pa_lang.cli", "lsp"], stdin=subprocess.PIPE,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=dict(env, PA_LSP_AUTORELOAD="0"))
+    try:
+        time.sleep(1.5)
+        assert p.poll() is None
+        (watch / "m.py").write_text("a = 2\n")
+        assert p.wait(timeout=10) == 0
+        assert b"restarts a fresh server" in p.stderr.read()
+        time.sleep(2.0)
+        assert q.poll() is None                      # opt-out keeps running
+    finally:
+        p.kill()
+        q.kill()

@@ -156,6 +156,7 @@ class Validator:
                                  inferred_context={"callee": name})
             if name in self.funcs:
                 self.check_mut_args(n, name)
+                self.check_alias(n, name)
 
     def check_mut_args(self, n: ast.Call, name: str) -> None:
         params = [a.arg for a in self.funcs[name].args.args]
@@ -169,11 +170,131 @@ class Validator:
                                            "replacement": f"mut({ast.unparse(arg)})"}])
 
     @staticmethod
+    def root_name(e) -> Optional[str]:
+        while isinstance(e, (ast.Attribute, ast.Subscript)):
+            e = e.value
+        return e.id if isinstance(e, ast.Name) else None
+
+    def check_alias(self, n: ast.Call, name: str) -> None:
+        """PA_E089: the same variable passed twice while one occurrence is mut(...)."""
+        args = list(n.args) + [k.value for k in n.keywords]
+        muts = [a.args[0].id for a in args if self.is_mut_call(a) and a.args and isinstance(a.args[0], ast.Name)]
+        roots = [a.args[0].id if self.is_mut_call(a) and a.args and isinstance(a.args[0], ast.Name) else self.root_name(a)
+                 for a in args]
+        for m in dict.fromkeys(muts):
+            if roots.count(m) > 1:
+                self.sink.report("PA_E089", n, f"'{m}' is passed to '{name}' more than once and one of them is mut()",
+                                 inferred_context={"variable": m, "callee": name},
+                                 causal_chain=[f"{name}() receives '{m}' through two parameters", "one of them may append/realloc",
+                                               "the other view would dangle (use-after-free)"],
+                                 patches=[{"line": n.lineno, "replacement": f"copy_of_{m} = {m}\n{name}(... mut({m}) ..., copy_of_{m})"}])
+
+    def check_negative_index(self, fn) -> None:
+        for n in walk_code(fn):
+            if not isinstance(n, ast.Subscript) or isinstance(n.slice, ast.Slice):
+                continue
+            idxs = n.slice.elts if isinstance(n.slice, ast.Tuple) else [n.slice]
+            for ix in idxs:
+                if isinstance(ix, ast.UnaryOp) and isinstance(ix.op, ast.USub) and isinstance(ix.operand, ast.Constant) \
+                        and isinstance(ix.operand.value, (int, float)):
+                    self.sink.report("PA_E073", n, f"negative index -{ix.operand.value} is out of range in Pa",
+                                     causal_chain=["Pa does not fold negative indexes into len + i"],
+                                     patches=[{"line": n.lineno, "replacement":
+                                               f"{ast.unparse(n.value)}[len({ast.unparse(n.value)}) - {ix.operand.value}]"}])
+
+    def check_mutation_while_iterating(self, fn) -> None:
+        for loop in (n for n in walk_code(fn) if isinstance(n, ast.For) and isinstance(n.iter, ast.Name)):
+            name = loop.iter.id
+            for st in loop.body:
+                for n in walk_code(st):
+                    why = None
+                    if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in LIST_MUTATORS \
+                            and isinstance(n.func.value, ast.Name) and n.func.value.id == name:
+                        why = f".{n.func.attr}() on"
+                    elif isinstance(n, ast.Call) and self.is_mut_call(n) and n.args and isinstance(n.args[0], ast.Name) \
+                            and n.args[0].id == name:
+                        why = "mut(...) of"
+                    elif isinstance(n, (ast.Assign, ast.AugAssign)) and any(
+                            isinstance(t, ast.Name) and t.id == name
+                            for t in (n.targets if isinstance(n, ast.Assign) else [n.target])):
+                        why = "rebinding"
+                    if why:
+                        self.sink.report("PA_E087", n, f"{why} '{name}' inside 'for ... in {name}' (iteration can dangle)",
+                                         inferred_context={"list": name, "loop_line": loop.lineno},
+                                         causal_chain=[f"loop over '{name}' at line {loop.lineno} caches its data pointer",
+                                                       "growing or replacing the list reallocates it"])
+
+    # ---- definite assignment (PA_E088) -----------------------------------
+    def check_definite_assignment(self, fn) -> None:
+        local = set()
+        for n in walk_code(fn):
+            if isinstance(n, ast.Assign):
+                local |= {t.id for t in n.targets if isinstance(t, ast.Name)}
+            elif isinstance(n, ast.AugAssign) and isinstance(n.target, ast.Name):
+                local.add(n.target.id)
+            elif isinstance(n, ast.For) and isinstance(n.target, ast.Name):
+                local.add(n.target.id)
+        params = {a.arg for a in fn.args.posonlyargs + fn.args.args + fn.args.kwonlyargs}
+        reported = set()
+
+        def use(expr, A) -> None:
+            for x in walk_code(expr):
+                if isinstance(x, ast.Name) and isinstance(x.ctx, ast.Load) and x.id in local \
+                        and x.id not in params and x.id not in A and (x.id, x.lineno) not in reported:
+                    reported.add((x.id, x.lineno))
+                    self.sink.report("PA_E088", x, f"'{x.id}' may be used before it is assigned",
+                                     inferred_context={"variable": x.id},
+                                     causal_chain=[f"'{x.id}' is only assigned inside a branch or loop body (or later)",
+                                                   "another path reaches this use with it uninitialised"],
+                                     patches=[{"line": fn.lineno + 1, "replacement": f"{x.id} = 0  # initialise before the branch/loop"}])
+
+        def flow(stmts, A):
+            A = set(A)
+            for s in stmts:
+                if isinstance(s, ast.Assign):
+                    use(s.value, A)
+                    for t in s.targets:
+                        if isinstance(t, ast.Name):
+                            A.add(t.id)
+                        else:
+                            use(t, A)
+                elif isinstance(s, ast.AugAssign):
+                    use(s.value, A)
+                    use(s.target if not isinstance(s.target, ast.Name) else ast.Name(s.target.id, ast.Load(), lineno=s.lineno, col_offset=s.col_offset), A)
+                elif isinstance(s, ast.Expr):
+                    use(s.value, A)
+                elif isinstance(s, ast.Return):
+                    if s.value is not None:
+                        use(s.value, A)
+                    return A, True
+                elif isinstance(s, (ast.Break, ast.Continue)):
+                    return A, True
+                elif isinstance(s, ast.If):
+                    use(s.test, A)
+                    a1, t1 = flow(s.body, A)
+                    a2, t2 = flow(s.orelse, A)
+                    if t1 and t2:
+                        return A, True
+                    A = a2 if t1 else a1 if t2 else (a1 & a2)
+                elif isinstance(s, ast.While):
+                    use(s.test, A)
+                    flow(s.body, A)
+                elif isinstance(s, ast.For):
+                    use(s.iter, A)
+                    flow(s.body, A | ({s.target.id} if isinstance(s.target, ast.Name) else set()))
+            return A, False
+
+        flow(fn.body, set(params))
+
+    @staticmethod
     def is_mut_call(e) -> bool:
         return isinstance(e, ast.Call) and isinstance(e.func, ast.Name) and e.func.id == "mut"
 
     # ---- per-function ------------------------------------------------
     def check_function(self, fn: ast.FunctionDef) -> None:
+        self.check_negative_index(fn)
+        self.check_mutation_while_iterating(fn)
+        self.check_definite_assignment(fn)
         self.check_signature(fn)
         self.check_body_annotations(fn)
         self.check_size(fn)

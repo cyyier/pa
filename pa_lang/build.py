@@ -17,6 +17,7 @@ from .validator import check_source, default_search_dirs
 from .diagnostics import DiagnosticSink
 
 BRIDGE_C = os.path.join(os.path.dirname(__file__), "runtime_bridge.c")
+CORE_C = os.path.join(os.path.dirname(__file__), "runtime_core.c")
 
 
 class BuildError(Exception):
@@ -75,7 +76,7 @@ def compile_pa(path: str, out: Optional[str] = None, shared: bool = False, emit_
     if paw_errors:
         raise BuildError("\n".join(d.brief() for d in paw_errors))
     try:
-        ir_text, paws = generate(tree, info, os.path.basename(path), shared)
+        ir_text, paws = generate(tree, info, os.path.basename(path), shared, mode)
     except CodegenError as e:
         raise BuildError(f"{path}:{e.line}: error PA_E100: {e}")
     if emit_ir:
@@ -85,7 +86,9 @@ def compile_pa(path: str, out: Optional[str] = None, shared: bool = False, emit_
         obj = os.path.join(tmp, "pa_prog.o")
         with open(obj, "wb") as f:
             f.write(ir_to_object(ir_text))
-        objs, libs = [obj], ["-lm"]
+        objs, libs = [obj, build_core(tmp, mode)], ["-lm"]
+        if shared:
+            objs.append(build_wrappers(tmp, info))
         if paws:
             objs.append(build_bridge(tmp, [os.path.dirname(os.path.abspath(p.path)) for p in info.paw.values()] + [os.path.abspath(d) for d in dirs], mode))
             inc, libdir, lib = python_flags()
@@ -95,6 +98,58 @@ def compile_pa(path: str, out: Optional[str] = None, shared: bool = False, emit_
         if r.returncode:
             raise BuildError("link failed:\n" + r.stderr)
     return out
+
+
+def build_core(tmp: str, mode: str) -> str:
+    obj = os.path.join(tmp, "runtime_core.o")
+    r = subprocess.run(["gcc", "-O2", "-fPIC", "-c", CORE_C, "-o", obj, f'-DPA_MODE="{mode}"'], capture_output=True, text=True)
+    if r.returncode:
+        raise BuildError("core runtime compile failed:\n" + r.stderr)
+    return obj
+
+
+def c_type(t) -> str:
+    from .types import F32, F64, I32, I64, U8, BOOL, VOID, ViewT, Span, resolve
+    t = resolve(t)
+    table = {I32: "int32_t", I64: "int64_t", U8: "uint8_t", F32: "float", F64: "double", BOOL: "_Bool", VOID: "void"}
+    if t in table:
+        return table[t]
+    if isinstance(t, (Span, ViewT)):
+        return "pa_span"
+    return "void *"
+
+
+def wrapper_source(info) -> str:
+    """C wrappers for @export functions: guard (setjmp) so a fault returns to the host instead of exit(70)."""
+    out = ["#include <setjmp.h>", "#include <stdint.h>",
+           "typedef struct { void *p; int64_t n; } pa_span;",
+           "extern void *pa_guard_enter(void *); extern void pa_guard_leave(void *);"]
+    for name, fi in info.funcs.items():
+        if not fi.exported:
+            continue
+        ret = c_type(fi.ret)
+        params = [(c_type(t), f"a{i}") for i, t in enumerate(fi.params.values())]
+        decl = ", ".join(f"{t} {n}" for t, n in params) or "void"
+        call = ", ".join(n for _, n in params)
+        out.append(f"{ret} pa_impl_{name}({decl});")
+        body = [f"{ret} {name}({decl}) {{", "    jmp_buf jb;", "    void *prev = pa_guard_enter(&jb);",
+                "    if (setjmp(jb)) { pa_guard_leave(prev); return" + ("" if ret == "void" else " 0") + "; }"]
+        if ret == "void":
+            body += [f"    pa_impl_{name}({call});", "    pa_guard_leave(prev);"]
+        else:
+            body += [f"    {ret} r = pa_impl_{name}({call});", "    pa_guard_leave(prev);", "    return r;"]
+        out += body + ["}"]
+    return "\n".join(out) + "\n"
+
+
+def build_wrappers(tmp: str, info) -> str:
+    src, obj = os.path.join(tmp, "pa_wrappers.c"), os.path.join(tmp, "pa_wrappers.o")
+    with open(src, "w") as f:
+        f.write(wrapper_source(info))
+    r = subprocess.run(["gcc", "-O2", "-fPIC", "-c", src, "-o", obj], capture_output=True, text=True)
+    if r.returncode:
+        raise BuildError("wrapper compile failed:\n" + r.stderr)
+    return obj
 
 
 def build_bridge(tmp: str, pawdirs: list, mode: str = "dev") -> str:

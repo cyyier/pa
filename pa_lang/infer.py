@@ -10,7 +10,7 @@ from .paw import PawModule, find_paw, load_paw
 from .types import (
     BOOL, COPY_WARN_LIMIT, F32, F64, I32, I64, STACK_LIMIT, STR_VIEW, UNKNOWN, VOID,
     BUILTINS_OK, INTRINSICS, DynList, FixedList, Ptr, Span, StackVec, StructT, Type, Vec,
-    is_aggregate, is_numeric, parse_annotation, promote, resolve, SCALARS, StrOwned, is_str, U8,
+    is_aggregate, is_numeric, parse_annotation, promote, resolve, SCALARS, StrOwned, is_str, U8, display, simple_display, Scalar,
 )
 
 ROOT = "<root>"
@@ -36,7 +36,8 @@ class FuncInfo:
     locals: dict = field(default_factory=dict)       # name -> LocalInfo
     raii_free_lines: list = field(default_factory=list)
     copy_lines: dict = field(default_factory=dict)   # line -> bytes
-    hints: list = field(default_factory=list)        # (line, name, text)
+    hints: list = field(default_factory=list)        # (line, name, text) -- detailed flavour
+    hints_simple: list = field(default_factory=list) # (line, name, text) -- default, lowest mental load
 
 
 @dataclass
@@ -48,6 +49,7 @@ class ModuleInfo:
     paw: dict = field(default_factory=dict)          # import alias -> PawModule
     expr_types: dict = field(default_factory=dict)   # id(ast node) -> Type (final pass)
     probing: set = field(default_factory=set)
+    fconsts: dict = field(default_factory=dict)      # module-level float/bool/str constants: name -> (value, Type)
 
 
 def _decorators(node) -> set:
@@ -65,6 +67,9 @@ def const_value(node, consts: dict):
         return node.value
     if isinstance(node, ast.Name):
         return consts.get(node.id)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+        v = const_value(node.operand, consts)
+        return None if v is None else (-v if isinstance(node.op, ast.USub) else v)
     if isinstance(node, ast.BinOp):
         a, b = const_value(node.left, consts), const_value(node.right, consts)
         if a is None or b is None:
@@ -73,6 +78,35 @@ def const_value(node, consts: dict):
                ast.Mult: lambda x, y: x * y, ast.FloorDiv: lambda x, y: x // y if y else None}
         f = ops.get(type(node.op))
         return f(a, b) if f else None
+    return None
+
+
+def eval_const(node, mod) -> object:
+    """Compile-time value (int/float/bool/str) of a module-level constant expression, or None."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, (bool, int, float, str)):
+        return node.value
+    if isinstance(node, ast.Name):
+        if node.id in mod.consts:
+            return mod.consts[node.id]
+        return mod.fconsts[node.id][0] if node.id in mod.fconsts else None
+    num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+        v = eval_const(node.operand, mod)
+        return (-v if isinstance(node.op, ast.USub) else v) if num(v) else None
+    if isinstance(node, ast.BinOp):
+        a, b = eval_const(node.left, mod), eval_const(node.right, mod)
+        if not (num(a) and num(b)):
+            return None
+        try:
+            if isinstance(node.op, ast.Add): return a + b
+            if isinstance(node.op, ast.Sub): return a - b
+            if isinstance(node.op, ast.Mult): return a * b
+            if isinstance(node.op, ast.Div): return a / b
+            if isinstance(node.op, ast.FloorDiv): return a // b
+            if isinstance(node.op, ast.Mod): return a % b
+            return None
+        except ZeroDivisionError:
+            return None
     return None
 
 
@@ -104,6 +138,10 @@ def paw_arg_compatible(pt: Type, at: Type) -> bool:
         return isinstance(at, (FixedList, Vec, StackVec, Span)) and at.elem == pt.elem
     if pt == STR_VIEW:
         return is_str(at)
+    if pt == BOOL:
+        return at == BOOL
+    if isinstance(pt, Scalar) and pt.kind == "int":            # int params never accept floats (silent truncation)
+        return isinstance(at, Scalar) and at.kind in ("int", "bool")
     return is_numeric(at) or at == BOOL
 
 
@@ -172,7 +210,29 @@ class FuncInferer:
             self.bind(s.target.id, vt, s.lineno)
         self.block(s.body)
 
+    @staticmethod
+    def assign_compatible(old: Type, new: Type) -> bool:
+        old, new = resolve(old), resolve(new)
+        if UNKNOWN in (old, new) or old == new:
+            return True
+        if is_numeric(old) and is_numeric(new) or (old == BOOL and is_numeric(new)) or (new == BOOL and is_numeric(old)):
+            return True
+        if is_str(old) and is_str(new):
+            return True
+        if isinstance(old, (Vec, StackVec)) and isinstance(new, (Vec, StackVec)):
+            return old.elem == new.elem
+        return False
+
     def bind(self, name: str, t: Type, line: int, storage: Optional[str] = None) -> None:
+        old = self.env.get(name)
+        if old is not None and not isinstance(t, DynList) and not isinstance(old, DynList) \
+                and not self.assign_compatible(old, t):
+            self.sink.report("PA_E086", None, f"'{name}' was {display(resolve(old))} and is now assigned {display(resolve(t))}",
+                             line=line, inferred_context={"variable": name, "was": display(resolve(old)), "now": display(resolve(t))},
+                             causal_chain=[f"'{name}' first has type {display(resolve(old))}",
+                                           f"line {line} rebinds it to {display(resolve(t))}",
+                                           "a variable has exactly one storage layout"],
+                             patches=[{"line": line, "action": "rename", "replacement": f"{name}2 = ..."}])
         if name in self.env:
             t = widen(self.env[name], t) if not isinstance(t, DynList) else t
         self.env[name] = t
@@ -271,6 +331,8 @@ class FuncInferer:
             return self.env[e.id]
         if e.id in self.mod.consts:
             return literal_int_type(self.mod.consts[e.id])
+        if e.id in self.mod.fconsts:
+            return self.mod.fconsts[e.id][1]
         return UNKNOWN
 
     def e_UnaryOp(self, e) -> Type:
@@ -709,9 +771,16 @@ def collect_module(tree: ast.Module, sink: DiagnosticSink, search_dirs=None) -> 
                     mod.paw[a.asname or a.name] = load_paw(path)
     for node in tree.body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-            v = const_value(node.value, mod.consts)
-            if v is not None:
-                mod.consts[node.targets[0].id] = v
+            v = eval_const(node.value, mod)
+            name = node.targets[0].id
+            if isinstance(v, bool):
+                mod.fconsts[name] = (v, BOOL)
+            elif isinstance(v, int):
+                mod.consts[name] = v
+            elif isinstance(v, float):
+                mod.fconsts[name] = (v, F64)
+            elif isinstance(v, str):
+                mod.fconsts[name] = (v, STR_VIEW)
         elif isinstance(node, ast.ClassDef) and "struct" in _decorators(node):
             fields = []
             for st in node.body:
@@ -766,9 +835,11 @@ def annotation_str(t: Type) -> str:
     t = resolve(t)
     if isinstance(t, FixedList):
         return f"list[{annotation_str(t.elem)}, {t.n}]"
+    if isinstance(t, StrOwned):
+        return "String"
     if isinstance(t, (Vec, StackVec)):
         return f"Vec[{annotation_str(t.elem)}]"
-    return t.fmt()
+    return display(t)
 
 
 def compatible_return(declared: Type, inferred: Type) -> bool:
@@ -831,19 +902,21 @@ def check_temp_strings(mod: ModuleInfo, sink: DiagnosticSink) -> None:
 
 
 def build_hints(fi: FuncInfo) -> None:
+    fi.hints, fi.hints_simple = [], []
     for loc in fi.locals.values():
         if loc.storage == "param":
             continue
         t = loc.type
         if isinstance(t, FixedList):
-            text = f": {t.fmt()} ({t.size}B flat)"
+            text = f": {display(t)} ({t.size}B flat)"
         elif isinstance(t, StackVec):
-            text = f": {t.fmt()} (Zero-Heap)"
+            text = f": {display(t)} (Zero-Heap)"
         elif isinstance(t, Vec):
-            text = f": {t.fmt()} ({'RAII' if not loc.escapes else 'ownership -> caller'})"
+            text = f": {display(t)} ({'RAII' if not loc.escapes else 'ownership -> caller'})"
         else:
-            text = f": {t.fmt()}"
+            text = f": {display(t)}"
         fi.hints.append((loc.line, loc.name, text))
+        fi.hints_simple.append((loc.line, loc.name, f": {simple_display(t)}"))
     for line, nbytes in fi.copy_lines.items():
         if nbytes:
             fi.hints.append((line, "", f"[memcpy {nbytes}B]"))

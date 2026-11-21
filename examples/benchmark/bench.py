@@ -22,4 +22,4 @@ def leibniz(n):
 
 if __name__ == "__main__":
     print(lcg_sum(N))
-    print("%.10g" % leibniz(N))
+    print(leibniz(N))
