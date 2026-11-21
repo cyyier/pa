@@ -1,0 +1,23 @@
+import data_fetcher
+
+N = 64
+WINDOW = 4
+
+
+def moving_average(xs):
+    out = []
+    for i in range(N - WINDOW):
+        s = 0.0
+        for j in range(WINDOW):
+            s = s + xs[i + j]
+        out.append(s / WINDOW)
+    return out
+
+
+def main():
+    series = data_fetcher.fetch_series(N, 7)
+    smooth = moving_average(series)
+    p90 = data_fetcher.percentile(smooth, 90.0)
+    print(len(series), len(smooth))
+    print(p90)
+    return 0

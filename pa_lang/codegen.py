@@ -1,0 +1,921 @@
+"""llvmlite IR generation for Pa.
+
+Memory model: scalars are SSA values; FixedList / Vec / StackVec / @struct live in memory and are
+handled by address. StackVec and Vec share the {T*, len, cap} header (StackVec's pointer targets an
+entry-block alloca). .paw calls are lowered to marshaling stubs around runtime_bridge.c.
+"""
+from __future__ import annotations
+
+import ast
+from typing import Optional
+
+from llvmlite import ir
+
+from .infer import FuncInferer, ModuleInfo, const_value, analyze
+from .paw import ELEM_CODES, PawFunc
+from .types import (BOOL, F32, F64, I32, I64, STR_VIEW, U8, UNKNOWN, VOID, FixedList, Ptr, Span, StackVec,
+                    StructT, Type, Vec, resolve, is_numeric)
+
+PTR = ir.PointerType()
+I1, I8, I32T, I64T = ir.IntType(1), ir.IntType(8), ir.IntType(32), ir.IntType(64)
+F32T, F64T, VOIDT = ir.FloatType(), ir.DoubleType(), ir.VoidType()
+VEC = ir.LiteralStructType([PTR, I64T, I64T])
+VIEW = ir.LiteralStructType([PTR, I64T])
+PAARG = ir.LiteralStructType([I32T, I32T, I64T, F64T, PTR, I64T])
+PARET = ir.LiteralStructType([I64T, F64T, PTR, I64T])
+TAG_INT, TAG_FLOAT, TAG_BOOL, TAG_STR, TAG_BUF, TAG_VOID = range(6)
+
+
+class PBuilder(ir.IRBuilder):
+    """IRBuilder that reports every pointer as the opaque `ptr` type (llvmlite tracks typed ones)."""
+
+    def gep(self, *a, **k):
+        r = super().gep(*a, **k)
+        r.type = PTR
+        return r
+
+    def alloca(self, *a, **k):
+        r = super().alloca(*a, **k)
+        r.type = PTR
+        return r
+
+
+class CodegenError(Exception):
+    def __init__(self, msg: str, node=None):
+        super().__init__(msg)
+        self.line = getattr(node, "lineno", 0)
+
+
+def is_agg(t: Type) -> bool:
+    return isinstance(resolve(t), (FixedList, Vec, StackVec, StructT))
+
+
+def is_int(t: Type) -> bool:
+    return t in (I32, I64, U8)
+
+
+def ci(n: int, ty=I32T) -> ir.Constant:
+    return ir.Constant(ty, n)
+
+
+class ModuleGen:
+    def __init__(self, tree: ast.Module, info: ModuleInfo, filename: str = "<mem>", shared: bool = False):
+        self.tree, self.info, self.shared = tree, info, shared
+        self.m = ir.Module(name=filename)
+        self.struct_cache: dict = {}
+        self.strings: dict = {}
+        self.fns: dict = {}
+        self.paw_used: set = set()
+        d = lambda name, ret, args, va=False: ir.Function(self.m, ir.FunctionType(ret, args, var_arg=va), name)
+        self.malloc = d("malloc", PTR, [I64T])
+        self.realloc = d("realloc", PTR, [PTR, I64T])
+        self.free = d("free", VOIDT, [PTR])
+        self.printf = d("printf", I32T, [PTR], True)
+        self.memcpy = d("llvm.memcpy.p0.p0.i64", VOIDT, [PTR, PTR, I64T, I1])
+        self.call_paw = d("pa_call_paw", VOIDT, [PTR, PTR, PTR, I32T, I32T, I32T, I32T, PTR])
+
+    # ---- type lowering ----------------------------------------------
+    def lt(self, t: Type, node=None) -> ir.Type:
+        t = resolve(t)
+        if t == I32: return I32T
+        if t == I64: return I64T
+        if t == U8: return I8
+        if t == BOOL: return I1
+        if t == F32: return F32T
+        if t == F64: return F64T
+        if t == VOID: return VOIDT
+        if isinstance(t, (Vec, StackVec)): return VEC
+        if isinstance(t, FixedList): return ir.ArrayType(self.lt(t.elem, node), t.n)
+        if isinstance(t, (Ptr,)): return PTR
+        if isinstance(t, Span) or t == STR_VIEW: return VIEW
+        if isinstance(t, StructT):
+            if t.name not in self.struct_cache:
+                self.struct_cache[t.name] = ir.LiteralStructType([self.lt(ft, node) for _, ft in t.fields])
+            return self.struct_cache[t.name]
+        raise CodegenError(f"cannot lower type '{t.fmt()}' (inference could not determine it)", node)
+
+    def param_lt(self, t: Type, node=None) -> ir.Type:
+        return PTR if is_agg(t) else self.lt(t, node)
+
+    def cstr(self, s: str) -> ir.Value:
+        if s not in self.strings:
+            data = bytearray(s.encode("utf-8") + b"\0")
+            g = ir.GlobalVariable(self.m, ir.ArrayType(I8, len(data)), f".str.{len(self.strings)}")
+            g.global_constant, g.linkage = True, "private"
+            g.initializer = ir.Constant(ir.ArrayType(I8, len(data)), data)
+            g.type = PTR
+            self.strings[s] = g
+        return self.strings[s]
+
+    @staticmethod
+    def symbol(name: str, exported: bool) -> str:
+        if name == "main":
+            return "pa_user_main"
+        return name if exported else f"pa_fn_{name}"
+
+    # ---- driver ------------------------------------------------------
+    def reachable(self) -> list:
+        funcs = self.info.funcs
+        roots = [n for n, f in funcs.items() if f.exported or (n == "main" and not self.shared)]
+        seen, stack = [], list(roots)
+        while stack:
+            n = stack.pop()
+            if n in seen:
+                continue
+            seen.append(n)
+            for x in ast.walk(funcs[n].node):
+                if isinstance(x, ast.Call) and isinstance(x.func, ast.Name) and x.func.id in funcs:
+                    stack.append(x.func.id)
+        return seen
+
+    def emit(self) -> str:
+        names = self.reachable()
+        if not self.shared and "main" not in self.info.funcs:
+            raise CodegenError("executable build needs a main() function")
+        for n in names:
+            fi = self.info.funcs[n]
+            ft = ir.FunctionType(self.lt_ret(fi), [self.param_lt(t, fi.node) for t in fi.params.values()])
+            self.fns[n] = ir.Function(self.m, ft, self.symbol(n, fi.exported))
+        for n in names:
+            FnGen(self, self.info.funcs[n], self.fns[n]).emit()
+        if not self.shared:
+            self.emit_c_main()
+        return str(self.m)
+
+    def lt_ret(self, fi) -> ir.Type:
+        return VOIDT if fi.ret == VOID or fi.ret == UNKNOWN else self.lt(fi.ret, fi.node)
+
+    def emit_c_main(self) -> None:
+        fi = self.info.funcs["main"]
+        f = ir.Function(self.m, ir.FunctionType(I32T, [I32T, PTR]), "main")
+        b = PBuilder(f.append_basic_block("entry"))
+        r = b.call(self.fns["main"], [])
+        if fi.ret in (VOID, UNKNOWN):
+            b.ret(ci(0))
+        elif fi.ret in (I32, I64, U8, BOOL):
+            w = r.type.width
+            b.ret(r if w == 32 else b.trunc(r, I32T) if w > 32 else b.zext(r, I32T))
+        else:
+            raise CodegenError("main() must return an integer or nothing", fi.node)
+
+
+class FnGen:
+    def __init__(self, mg: ModuleGen, fi, fn: ir.Function):
+        self.mg, self.fi, self.fn, self.info = mg, fi, fn, mg.info
+        self.entry_b = PBuilder(fn.append_basic_block("entry"))
+        self.b = PBuilder(fn.append_basic_block("body"))
+        self.slots: dict = {}          # name -> (ptr, Type)
+        self.loops: list = []          # (continue_block, break_block)
+        self.returned = self.returned_names()
+
+    # ---- helpers -----------------------------------------------------
+    def err(self, msg, node):
+        raise CodegenError(msg, node)
+
+    def ty(self, node) -> Type:
+        t = self.info.expr_types.get(id(node))
+        if t is None:
+            self.err(f"no inferred type for expression '{ast.unparse(node)}'", node)
+        t = resolve(t)
+        if t == UNKNOWN:
+            self.err(f"cannot statically infer the type of '{ast.unparse(node)}'", node)
+        return t
+
+    def lt(self, t, node=None):
+        return self.mg.lt(t, node)
+
+    def returned_names(self) -> set:
+        out = set()
+        for n in ast.walk(self.fi.node):
+            if isinstance(n, ast.Return) and n.value is not None:
+                for name in list(self.fi.locals):
+                    if FuncInferer.escapes_in(n.value, name):
+                        out.add(name)
+        return out
+
+    def alloca(self, ty, name=""):
+        return self.entry_b.alloca(ty, name=name)
+
+    def memcpy(self, dst, src, nbytes):
+        self.b.call(self.mg.memcpy, [dst, src, ci(nbytes, I64T) if isinstance(nbytes, int) else nbytes, ir.Constant(I1, 0)])
+
+    def terminated(self) -> bool:
+        return self.b.block.is_terminated
+
+    # ---- function ----------------------------------------------------
+    def emit(self) -> None:
+        fi = self.fi
+        for arg, (name, t) in zip(self.fn.args, fi.params.items()):
+            if t == UNKNOWN:
+                self.err(f"cannot infer the type of parameter '{name}' of '{fi.name}'", fi.node)
+            if is_agg(t):
+                self.slots[name] = (arg, t)
+            else:
+                slot = self.alloca(self.lt(t, fi.node), name)
+                self.entry_b.store(arg, slot)
+                self.slots[name] = (slot, t)
+        for name, loc in fi.locals.items():
+            if name not in self.slots:
+                self.init_local(name, loc.type)
+        self.block(fi.node.body)
+        if not self.terminated():
+            self.emit_return_value(None)
+        self.entry_b.branch(self.b.function.basic_blocks[1])
+
+    def init_local(self, name: str, t: Type) -> None:
+        t = resolve(t)
+        if t == UNKNOWN:
+            self.err(f"cannot infer the type of local '{name}'", self.fi.node)
+        slot = self.alloca(self.lt(t, self.fi.node), name)
+        self.slots[name] = (slot, t)
+        if isinstance(t, (Vec, StackVec)):
+            buf = PTR(None) if False else ir.Constant(PTR, None)
+            if isinstance(t, StackVec):
+                arr = self.alloca(ir.ArrayType(self.lt(t.elem), t.max_n), name + ".buf")
+                buf, cap = arr, t.max_n
+            else:
+                cap = 0
+            self.store_vec_header(self.entry_b, slot, buf, 0, cap)
+
+    def store_vec_header(self, b, slot, ptr, n, cap) -> None:
+        for i, v in enumerate((ptr, ci(n, I64T), ci(cap, I64T))):
+            b.store(v, b.gep(slot, [ci(0), ci(i)], inbounds=True, source_etype=VEC))
+
+    # ---- statements --------------------------------------------------
+    def block(self, stmts) -> None:
+        for s in stmts:
+            if self.terminated():
+                return
+            self.stmt(s)
+
+    def stmt(self, s) -> None:
+        h = getattr(self, "s_" + type(s).__name__, None)
+        if h is None:
+            self.err(f"statement '{type(s).__name__}' is not supported by the code generator", s)
+        h(s)
+
+    def s_Pass(self, s): pass
+
+    def s_Break(self, s) -> None:
+        if not self.loops:
+            self.err("'break' outside a loop", s)
+        self.b.branch(self.loops[-1][1])
+
+    def s_Continue(self, s) -> None:
+        if not self.loops:
+            self.err("'continue' outside a loop", s)
+        self.b.branch(self.loops[-1][0])
+
+    def s_Expr(self, s) -> None:
+        if isinstance(s.value, ast.Constant):
+            return
+        self.call_stmt(s.value)
+
+    def call_stmt(self, e) -> None:
+        if isinstance(e, ast.Call) and isinstance(e.func, ast.Attribute) and e.func.attr == "append":
+            return self.append(e)
+        if is_agg(self.ty_or_void(e)):
+            self.addr(e)
+        else:
+            self.value(e)
+
+    def ty_or_void(self, e) -> Type:
+        t = resolve(self.info.expr_types.get(id(e), VOID))
+        return VOID if t == UNKNOWN else t
+
+    def s_Assign(self, s) -> None:
+        tgt = s.targets[0]
+        if isinstance(tgt, ast.Name):
+            return self.assign_name(tgt.id, s.value, s)
+        ptr, t = self.lvalue(tgt)
+        self.store_to(ptr, t, s.value)
+
+    def assign_name(self, name: str, val, s) -> None:
+        slot, t = self.slots[name]
+        if isinstance(val, ast.List) and not val.elts:
+            return self.reset_vec(slot, t)
+        self.store_to(slot, t, val, fresh_ok=True)
+
+    def reset_vec(self, slot, t) -> None:
+        if isinstance(t, Vec):
+            self.free_vec(slot)
+            self.store_vec_header(self.b, slot, ir.Constant(PTR, None), 0, 0)
+        else:
+            self.b.store(ci(0, I64T), self.b.gep(slot, [ci(0), ci(1)], inbounds=True, source_etype=VEC))
+
+    def free_vec(self, slot) -> None:
+        p = self.b.load(self.b.gep(slot, [ci(0), ci(0)], inbounds=True, source_etype=VEC), typ=PTR)
+        self.b.call(self.mg.free, [p])
+
+    def store_to(self, ptr, t: Type, val, fresh_ok: bool = False) -> None:
+        """Store expression `val` into memory at `ptr` of declared type t (value semantics)."""
+        t = resolve(t)
+        if not is_agg(t):
+            v = self.coerce(self.value(val), self.ty(val), t)
+            self.b.store(v, ptr)
+            return
+        src = self.addr(val)
+        if isinstance(t, (Vec, StackVec)):
+            fresh = isinstance(val, ast.Call) and not (isinstance(val.func, ast.Name) and val.func.id == "mut")
+            if isinstance(t, Vec) and fresh and fresh_ok:
+                self.free_vec(ptr)
+                self.memcpy(ptr, src, 24)
+            else:
+                self.vec_assign(ptr, t, src, resolve(self.ty(val)))
+        else:
+            self.memcpy(ptr, src, t.size)
+
+    def vec_assign(self, dst, dt, src, st) -> None:
+        """Deep copy a Vec/StackVec header + elements into dst (value semantics)."""
+        b = self.b
+        n = b.load(b.gep(src, [ci(0), ci(1)], inbounds=True, source_etype=VEC), typ=I64T)
+        sp = b.load(b.gep(src, [ci(0), ci(0)], inbounds=True, source_etype=VEC), typ=PTR)
+        nbytes = b.mul(n, ci(dt.elem.size, I64T))
+        if isinstance(dt, StackVec):
+            dp = b.load(b.gep(dst, [ci(0), ci(0)], inbounds=True, source_etype=VEC), typ=PTR)
+        else:
+            self.free_vec(dst)
+            dp = b.call(self.mg.malloc, [b.add(nbytes, ci(1, I64T))])
+            b.store(dp, b.gep(dst, [ci(0), ci(0)], inbounds=True, source_etype=VEC))
+            b.store(n, b.gep(dst, [ci(0), ci(2)], inbounds=True, source_etype=VEC))
+        self.memcpy(dp, sp, nbytes)
+        b.store(n, b.gep(dst, [ci(0), ci(1)], inbounds=True, source_etype=VEC))
+
+    def s_AugAssign(self, s) -> None:
+        ptr, t = self.lvalue(s.target)
+        cur = self.b.load(ptr, typ=self.lt(t))
+        rt = self.ty(s.value)
+        res_t = self.binop_type(t, rt, s.op)
+        r = self.binop(s.op, self.coerce(cur, t, res_t), self.coerce(self.value(s.value), rt, res_t), res_t, s)
+        self.b.store(self.coerce(r, res_t, t), ptr)
+
+    def lvalue(self, node):
+        """Address + Pa type of an assignable scalar/aggregate location."""
+        if isinstance(node, ast.Name):
+            return self.slots[node.id]
+        if isinstance(node, (ast.Subscript, ast.Attribute)):
+            return self.addr_of(node), self.ty(node)
+        self.err("unsupported assignment target", node)
+
+    def s_Return(self, s) -> None:
+        if s.value is None:
+            return self.emit_return_value(None)
+        rt = resolve(self.fi.ret)
+        if is_agg(rt):
+            src = self.addr(s.value)
+            v = self.b.load(src, typ=self.lt(rt))
+        else:
+            v = self.coerce(self.value(s.value), self.ty(s.value), rt)
+        self.emit_return_value(v)
+
+    def emit_return_value(self, v) -> None:
+        for name, (slot, t) in self.slots.items():
+            loc = self.fi.locals.get(name)
+            if loc and name not in self.fi.params and isinstance(t, Vec) and not loc.escapes \
+                    and name not in self.returned:
+                self.free_vec(slot)
+        rt = self.fn.function_type.return_type
+        if rt == VOIDT:
+            self.b.ret_void()
+        else:
+            self.b.ret(v if v is not None else ir.Constant(rt, None))
+
+    def s_If(self, s) -> None:
+        c = self.cond(s.test)
+        then_b = self.fn.append_basic_block("then")
+        else_b = self.fn.append_basic_block("else")
+        end_b = self.fn.append_basic_block("endif")
+        self.b.cbranch(c, then_b, else_b)
+        for blk, body in ((then_b, s.body), (else_b, s.orelse)):
+            self.b.position_at_end(blk)
+            self.block(body)
+            if not self.terminated():
+                self.b.branch(end_b)
+        self.b.position_at_end(end_b)
+
+    def s_While(self, s) -> None:
+        cb, bb, eb = (self.fn.append_basic_block(n) for n in ("wcond", "wbody", "wend"))
+        self.b.branch(cb)
+        self.b.position_at_end(cb)
+        self.b.cbranch(self.cond(s.test), bb, eb)
+        self.b.position_at_end(bb)
+        self.loops.append((cb, eb))
+        self.block(s.body)
+        self.loops.pop()
+        if not self.terminated():
+            self.b.branch(cb)
+        self.b.position_at_end(eb)
+
+    def s_For(self, s) -> None:
+        if not isinstance(s.target, ast.Name):
+            self.err("for-target must be a simple name", s)
+        slot, vt = self.slots[s.target.id]
+        it = s.iter
+        if isinstance(it, ast.Call) and isinstance(it.func, ast.Name) and it.func.id == "range":
+            return self.for_range(s, slot, vt)
+        ptr, n, elem = self.seq_view(it)
+        idx = self.alloca(I64T, "i")
+        self.b.store(ci(0, I64T), idx)
+        self.loop(s, lambda: self.b.icmp_signed("<", self.b.load(idx, typ=I64T), n),
+                  lambda: self.bind_elem(slot, vt, ptr, idx, elem),
+                  lambda: self.b.store(self.b.add(self.b.load(idx, typ=I64T), ci(1, I64T)), idx))
+
+    def bind_elem(self, slot, vt, ptr, idx, elem) -> None:
+        ep = self.b.gep(ptr, [self.b.load(idx, typ=I64T)], inbounds=True, source_etype=self.lt(elem))
+        if is_agg(elem):
+            self.memcpy(slot, ep, elem.size)
+        else:
+            self.b.store(self.coerce(self.b.load(ep, typ=self.lt(elem)), elem, vt), slot)
+
+    def for_range(self, s, slot, vt) -> None:
+        args = [self.coerce(self.value(a), self.ty(a), vt) for a in s.iter.args]
+        lt = self.lt(vt)
+        start, stop, step = (args[0], args[1], args[2]) if len(args) == 3 else \
+            (ir.Constant(lt, 0), args[0], ir.Constant(lt, 1)) if len(args) == 1 else (args[0], args[1], ir.Constant(lt, 1))
+        self.b.store(start, slot)
+        pos = len(s.iter.args) < 3 or const_value(s.iter.args[2], self.info.consts) is None or \
+            const_value(s.iter.args[2], self.info.consts) > 0
+        op = "<" if pos else ">"
+        self.loop(s, lambda: self.b.icmp_signed(op, self.b.load(slot, typ=lt), stop), lambda: None,
+                  lambda: self.b.store(self.b.add(self.b.load(slot, typ=lt), step), slot))
+
+    def loop(self, s, cond_fn, prologue, step_fn) -> None:
+        cb, bb, sb, eb = (self.fn.append_basic_block(n) for n in ("fcond", "fbody", "fstep", "fend"))
+        self.b.branch(cb)
+        self.b.position_at_end(cb)
+        self.b.cbranch(cond_fn(), bb, eb)
+        self.b.position_at_end(bb)
+        prologue()
+        self.loops.append((sb, eb))
+        self.block(s.body)
+        self.loops.pop()
+        if not self.terminated():
+            self.b.branch(sb)
+        self.b.position_at_end(sb)
+        step_fn()
+        self.b.branch(cb)
+        self.b.position_at_end(eb)
+
+    # ---- append ------------------------------------------------------
+    def append(self, e: ast.Call) -> None:
+        recv = e.func.value
+        t = self.ty(recv)
+        if not isinstance(t, (Vec, StackVec)):
+            self.err("append() requires a list built from []", e)
+        base = self.addr(recv)
+        b = self.b
+        hp = lambda i: b.gep(base, [ci(0), ci(i)], inbounds=True, source_etype=VEC)
+        n, ptr = b.load(hp(1), typ=I64T), None
+        if isinstance(t, Vec):
+            self.grow_if_full(base, hp, n, t)
+        ptr = b.load(hp(0), typ=PTR)
+        ep = b.gep(ptr, [n], inbounds=True, source_etype=self.lt(t.elem))
+        if is_agg(t.elem):
+            self.memcpy(ep, self.addr(e.args[0]), t.elem.size)
+        else:
+            b.store(self.coerce(self.value(e.args[0]), self.ty(e.args[0]), t.elem), ep)
+        b.store(b.add(n, ci(1, I64T)), hp(1))
+
+    def grow_if_full(self, base, hp, n, t) -> None:
+        b = self.b
+        cap = b.load(hp(2), typ=I64T)
+        grow, cont = self.fn.append_basic_block("grow"), self.fn.append_basic_block("grown")
+        b.cbranch(b.icmp_signed(">=", n, cap), grow, cont)
+        b.position_at_end(grow)
+        newcap = b.select(b.icmp_signed("==", cap, ci(0, I64T)), ci(16, I64T), b.mul(cap, ci(2, I64T)))
+        newp = b.call(self.mg.realloc, [b.load(hp(0), typ=PTR), b.mul(newcap, ci(t.elem.size, I64T))])
+        b.store(newp, hp(0))
+        b.store(newcap, hp(2))
+        b.branch(cont)
+        b.position_at_end(cont)
+
+    # ---- conditions & arithmetic -------------------------------------
+    def cond(self, e) -> ir.Value:
+        v, t = self.value(e), self.ty(e)
+        if v.type == I1:
+            return v
+        if isinstance(v.type, (ir.FloatType, ir.DoubleType)):
+            return self.b.fcmp_ordered("!=", v, ir.Constant(v.type, 0.0))
+        return self.b.icmp_signed("!=", v, ir.Constant(v.type, 0))
+
+    def coerce(self, v, frm: Type, to: Type):
+        frm, to = resolve(frm), resolve(to)
+        want = self.lt(to)
+        if v.type == want or to == UNKNOWN:
+            return v
+        b = self.b
+        fi_, ti = isinstance(v.type, ir.IntType), isinstance(want, ir.IntType)
+        if want == I1:
+            return b.fcmp_ordered("!=", v, ir.Constant(v.type, 0.0)) if not fi_ else b.icmp_signed("!=", v, ir.Constant(v.type, 0))
+        if fi_ and ti:
+            if v.type.width < want.width:
+                return b.zext(v, want) if frm in (U8, BOOL) else b.sext(v, want)
+            return b.trunc(v, want)
+        if fi_ and not ti:
+            return b.uitofp(v, want) if frm in (U8, BOOL) else b.sitofp(v, want)
+        if not fi_ and ti:
+            return b.fptosi(v, want)
+        return b.fpext(v, want) if want == F64T else b.fptrunc(v, want)
+
+    def binop_type(self, a: Type, b: Type, op) -> Type:
+        from .types import promote
+        if isinstance(op, ast.Div):
+            return F32 if (F32 in (a, b) and F64 not in (a, b)) else F64
+        return promote(a, b)
+
+    def binop(self, op, l, r, t: Type, node):
+        b, fl = self.b, t in (F32, F64)
+        if isinstance(op, ast.Add): return b.fadd(l, r) if fl else b.add(l, r)
+        if isinstance(op, ast.Sub): return b.fsub(l, r) if fl else b.sub(l, r)
+        if isinstance(op, ast.Mult): return b.fmul(l, r) if fl else b.mul(l, r)
+        if isinstance(op, ast.Div): return b.fdiv(l, r)
+        if isinstance(op, ast.FloorDiv):
+            if fl:
+                self.err("float // is not supported", node)
+            return b.sdiv(l, r)
+        if isinstance(op, ast.Mod): return b.frem(l, r) if fl else b.srem(l, r)
+        if fl:
+            self.err(f"operator {type(op).__name__} on floats is not supported", node)
+        for cls, f in ((ast.BitAnd, b.and_), (ast.BitOr, b.or_), (ast.BitXor, b.xor), (ast.LShift, b.shl), (ast.RShift, b.ashr)):
+            if isinstance(op, cls):
+                return f(l, r)
+        self.err(f"operator {type(op).__name__} is not supported", node)
+
+    # ---- expressions (scalars / views by value) ----------------------
+    def value(self, e) -> ir.Value:
+        h = getattr(self, "v_" + type(e).__name__, None)
+        if h is None:
+            self.err(f"expression '{type(e).__name__}' is not supported by the code generator", e)
+        return h(e)
+
+    def v_Constant(self, e):
+        v = e.value
+        if isinstance(v, bool): return ir.Constant(I1, int(v))
+        if isinstance(v, int): return ci(v, I32T if self.ty(e) == I32 else I64T)
+        if isinstance(v, float): return ir.Constant(F64T, v)
+        if isinstance(v, str):
+            raw = v.encode("utf-8")
+            view = ir.Constant(VIEW, ir.Undefined)
+            view = self.b.insert_value(view, self.mg.cstr(v), 0)
+            return self.b.insert_value(view, ci(len(raw), I64T), 1)
+        self.err("unsupported constant", e)
+
+    def v_Name(self, e):
+        if e.id in self.slots:
+            slot, t = self.slots[e.id]
+            return self.b.load(slot, typ=self.lt(t, e))
+        if e.id in self.info.consts:
+            return ci(self.info.consts[e.id], I32T if self.ty(e) == I32 else I64T)
+        self.err(f"unknown name '{e.id}'", e)
+
+    def v_UnaryOp(self, e):
+        v, t = self.value(e.operand), self.ty(e.operand)
+        if isinstance(e.op, ast.Not):
+            return self.b.xor(self.cond(e.operand), ir.Constant(I1, 1))
+        if t == BOOL:
+            v, t = self.coerce(v, t, I32), I32
+        if isinstance(e.op, ast.USub):
+            return self.b.fneg(v) if t in (F32, F64) else self.b.neg(v)
+        if isinstance(e.op, ast.Invert):
+            return self.b.not_(v)
+        return v
+
+    def v_BinOp(self, e):
+        lt_, rt = self.ty(e.left), self.ty(e.right)
+        t = self.binop_type(lt_, rt, e.op)
+        l, r = self.coerce(self.value(e.left), lt_, t), self.coerce(self.value(e.right), rt, t)
+        return self.binop(e.op, l, r, t, e)
+
+    def v_Compare(self, e):
+        res, left = None, e.left
+        for op, right in zip(e.ops, e.comparators):
+            c = self.compare_one(op, left, right, e)
+            res = c if res is None else self.b.and_(res, c)
+            left = right
+        return res
+
+    def compare_one(self, op, a, bnode, e):
+        from .types import promote
+        at, bt = self.ty(a), self.ty(bnode)
+        t = promote(at, bt)
+        l, r = self.coerce(self.value(a), at, t), self.coerce(self.value(bnode), bt, t)
+        name = {ast.Lt: "<", ast.LtE: "<=", ast.Gt: ">", ast.GtE: ">=", ast.Eq: "==", ast.NotEq: "!="}.get(type(op))
+        if name is None:
+            self.err("unsupported comparison operator", e)
+        if t in (F32, F64):
+            return self.b.fcmp_ordered(name, l, r) if name != "!=" else self.b.fcmp_unordered("!=", l, r)
+        return self.b.icmp_signed(name, l, r)
+
+    def v_BoolOp(self, e):
+        is_and = isinstance(e.op, ast.And)
+        res = self.alloca(I1, "bool")
+        self.b.store(self.cond(e.values[0]), res)
+        end = self.fn.append_basic_block("bend")
+        for v in e.values[1:]:
+            nxt = self.fn.append_basic_block("bnext")
+            cur = self.b.load(res, typ=I1)
+            self.b.cbranch(cur, nxt, end) if is_and else self.b.cbranch(cur, end, nxt)
+            self.b.position_at_end(nxt)
+            self.b.store(self.cond(v), res)
+        self.b.branch(end)
+        self.b.position_at_end(end)
+        return self.b.load(res, typ=I1)
+
+    def v_IfExp(self, e):
+        t = self.ty(e)
+        if is_agg(t):
+            self.err("conditional expression of aggregates is not supported", e)
+        slot = self.alloca(self.lt(t), "ifx")
+        tb, eb, nb = (self.fn.append_basic_block(n) for n in ("ift", "ife", "ifend"))
+        self.b.cbranch(self.cond(e.test), tb, eb)
+        for blk, x in ((tb, e.body), (eb, e.orelse)):
+            self.b.position_at_end(blk)
+            self.b.store(self.coerce(self.value(x), self.ty(x), t), slot)
+            self.b.branch(nb)
+        self.b.position_at_end(nb)
+        return self.b.load(slot, typ=self.lt(t))
+
+    def v_Subscript(self, e):
+        t = self.ty(e)
+        return self.b.load(self.addr_of(e), typ=self.lt(t, e))
+
+    def v_Attribute(self, e):
+        return self.b.load(self.addr_of(e), typ=self.lt(self.ty(e), e))
+
+    def v_Call(self, e):
+        f = e.func
+        if isinstance(f, ast.Attribute):
+            if isinstance(f.value, ast.Name) and f.value.id in self.info.paw:
+                return self.paw_call(e)
+            self.err(f"method call '.{f.attr}()' is not supported", e)
+        name = f.id
+        if name in self.info.funcs:
+            return self.local_call(e, name)
+        h = getattr(self, "i_" + name, None)
+        if h is None:
+            self.err(f"call to unknown function '{name}'", e)
+        return h(e)
+
+    # ---- intrinsics --------------------------------------------------
+    def i_len(self, e):
+        _, n, _ = self.seq_view(e.args[0])
+        return n
+
+    def i_int(self, e): return self.coerce(self.value(e.args[0]), self.ty(e.args[0]), I32)
+    def i_float(self, e): return self.coerce(self.value(e.args[0]), self.ty(e.args[0]), F64)
+    def i_bool(self, e): return self.cond(e.args[0])
+    def i_mut(self, e): return self.value(e.args[0])
+
+    def i_abs(self, e):
+        t = self.ty(e.args[0])
+        v = self.value(e.args[0])
+        neg = self.b.fneg(v) if t in (F32, F64) else self.b.neg(v)
+        lt0 = self.b.fcmp_ordered("<", v, ir.Constant(v.type, 0.0)) if t in (F32, F64) else self.b.icmp_signed("<", v, ir.Constant(v.type, 0))
+        return self.b.select(lt0, neg, v)
+
+    def minmax(self, e, op):
+        t = self.ty(e)
+        vals = [self.coerce(self.value(a), self.ty(a), t) for a in e.args]
+        out = vals[0]
+        for v in vals[1:]:
+            c = self.b.fcmp_ordered(op, v, out) if t in (F32, F64) else self.b.icmp_signed(op, v, out)
+            out = self.b.select(c, v, out)
+        return out
+
+    def i_min(self, e): return self.minmax(e, "<")
+    def i_max(self, e): return self.minmax(e, ">")
+
+    def i_alloc(self, e):
+        from .types import SCALARS
+        tname = e.args[0].id
+        elem = SCALARS.get(tname) or self.info.structs.get(tname)
+        if elem is None:
+            self.err(f"alloc: unknown type '{tname}'", e)
+        n = self.coerce(self.value(e.args[1]), self.ty(e.args[1]), I64)
+        return self.b.call(self.mg.malloc, [self.b.mul(n, ci(elem.size, I64T))])
+
+    def i_free(self, e):
+        self.b.call(self.mg.free, [self.value(e.args[0])])
+        return ir.Constant(I32T, 0)
+
+    def i_span(self, e):
+        ptr, n, elem = self.seq_view(e.args[0])
+        start = self.coerce(self.value(e.args[1]), self.ty(e.args[1]), I64)
+        ln = self.coerce(self.value(e.args[2]), self.ty(e.args[2]), I64)
+        p = self.b.gep(ptr, [start], inbounds=True, source_etype=self.lt(elem))
+        v = self.b.insert_value(ir.Constant(VIEW, ir.Undefined), p, 0)
+        return self.b.insert_value(v, ln, 1)
+
+    def i_copy(self, e):
+        dst, _, elem = self.seq_view(e.args[0])
+        src, _, _ = self.seq_view(e.args[1])
+        cnt = self.coerce(self.value(e.args[2]), self.ty(e.args[2]), I64)
+        self.memcpy(dst, src, self.b.mul(cnt, ci(elem.size, I64T)))
+        return ir.Constant(I32T, 0)
+
+    def i_print(self, e):
+        fmts, args = [], []
+        for a in e.args:
+            t, v = self.ty(a), self.value(a)
+            if t == STR_VIEW:
+                fmts.append("%.*s")
+                args += [self.b.trunc(self.b.extract_value(v, 1), I32T), self.b.extract_value(v, 0)]
+            elif t == BOOL:
+                fmts.append("%s")
+                args.append(self.b.select(v, self.mg.cstr("True"), self.mg.cstr("False")))
+            elif t in (F32, F64):
+                fmts.append("%.10g")
+                args.append(self.coerce(v, t, F64))
+            elif t == I64:
+                fmts.append("%lld")
+                args.append(v)
+            elif t in (I32, U8):
+                fmts.append("%d")
+                args.append(self.coerce(v, t, I32))
+            else:
+                self.err(f"print() cannot print a value of type {t.fmt()}", e)
+        fmt = " ".join(fmts) + "\n"
+        self.b.call(self.mg.printf, [self.mg.cstr(fmt)] + args)
+        return ir.Constant(I32T, 0)
+
+    # ---- local calls & paw FFI ---------------------------------------
+    def local_call(self, e, name: str):
+        callee = self.info.funcs[name]
+        names = list(callee.params)
+        bound = list(zip(names, e.args)) + [(k.arg, k.value) for k in e.keywords]
+        by_name = dict(bound)
+        args = []
+        for pname in names:
+            a = by_name.get(pname)
+            if a is None:
+                self.err(f"missing argument '{pname}' in call to '{name}'", e)
+            pt = callee.params[pname]
+            args.append(self.addr(a) if is_agg(pt) else self.coerce(self.value(a), self.ty(a), pt))
+        return self.b.call(self.mg.fns[name], args)
+
+    def paw_call(self, e):
+        mod = self.info.paw[e.func.value.id]
+        pf: PawFunc = mod.funcs[e.func.attr]
+        self.mg.paw_used.add(mod.name)
+        b = self.b
+        arr = self.alloca(ir.ArrayType(PAARG, max(len(pf.params), 1)), "pawargs")
+        for i, ((pn, pt), a) in enumerate(zip(pf.params, e.args)):
+            self.fill_arg(b.gep(arr, [ci(0), ci(i)], inbounds=True, source_etype=ir.ArrayType(PAARG, max(len(pf.params), 1))), pt, a)
+        ret = self.alloca(PARET, "pawret")
+        rt, relem = self.ret_codes(pf.ret)
+        b.call(self.mg.call_paw, [self.mg.cstr(mod.name), self.mg.cstr(pf.name), arr, ci(len(pf.params)),
+                                  ci(rt), ci(relem), ci(1 if pf.allow_nan else 0), ret])
+        return self.unbox_ret(pf.ret, ret)
+
+    @staticmethod
+    def ret_codes(t: Type):
+        if t == VOID: return TAG_VOID, 0
+        if isinstance(t, Vec): return TAG_BUF, ELEM_CODES[t.elem.name]
+        tag = TAG_BOOL if t == BOOL else TAG_FLOAT if t in (F32, F64) else TAG_INT
+        return tag, ELEM_CODES[t.name]
+
+    def fill_arg(self, p, pt: Type, a) -> None:
+        b = self.b
+        fld = lambda i: b.gep(p, [ci(0), ci(i)], inbounds=True, source_etype=PAARG)
+        at = self.ty(a)
+        if pt == STR_VIEW:
+            v = self.value(a)
+            tag, elem, ptr, n = TAG_STR, 0, b.extract_value(v, 0), b.extract_value(v, 1)
+            vals = (tag, elem, 0, 0.0, ptr, n)
+        elif isinstance(pt, (FixedList, Vec, Span)):
+            ptr, n, _ = self.seq_view(a)
+            vals = (TAG_BUF, ELEM_CODES[pt.elem.name], 0, 0.0, ptr, n)
+        else:
+            v = self.coerce(self.value(a), at, pt)
+            elem = ELEM_CODES[pt.name]
+            if pt == BOOL:
+                vals = (TAG_BOOL, elem, b.zext(v, I64T), 0.0, None, 0)
+            elif pt in (F32, F64):
+                vals = (TAG_FLOAT, elem, 0, self.coerce(v, pt, F64), None, 0)
+            else:
+                vals = (TAG_INT, elem, v if pt == I64 else (b.zext(v, I64T) if pt == U8 else b.sext(v, I64T)), 0.0, None, 0)
+        tys = (I32T, I32T, I64T, F64T, PTR, I64T)
+        for i, (v, ty) in enumerate(zip(vals, tys)):
+            if not isinstance(v, ir.Value):
+                v = ir.Constant(ty, None if ty == PTR and v is None else v)
+            b.store(v, fld(i))
+
+    def unbox_ret(self, t: Type, ret):
+        b = self.b
+        fld = lambda i, ty: b.load(b.gep(ret, [ci(0), ci(i)], inbounds=True, source_etype=PARET), typ=ty)
+        if t == VOID:
+            return ir.Constant(I32T, 0)
+        if isinstance(t, Vec):
+            tmp = self.alloca(VEC, "pawvec")
+            n = fld(3, I64T)
+            for i, v in enumerate((fld(2, PTR), n, n)):
+                b.store(v, b.gep(tmp, [ci(0), ci(i)], inbounds=True, source_etype=VEC))
+            return tmp
+        if t in (F32, F64):
+            return self.coerce(fld(1, F64T), F64, t)
+        v = fld(0, I64T)
+        if t == BOOL:
+            return b.icmp_signed("!=", v, ci(0, I64T))
+        return v if t == I64 else b.trunc(v, self.lt(t))
+
+    # ---- addresses (aggregates & lvalues) ----------------------------
+    def addr(self, e) -> ir.Value:
+        """Address of an aggregate-typed expression (a temp is materialized if needed)."""
+        h = getattr(self, "a_" + type(e).__name__, None)
+        if h is None:
+            self.err(f"aggregate expression '{type(e).__name__}' is not supported by the code generator", e)
+        return h(e)
+
+    def a_Name(self, e):
+        if e.id not in self.slots:
+            self.err(f"unknown name '{e.id}'", e)
+        return self.slots[e.id][0]
+
+    def a_Subscript(self, e): return self.addr_of(e)
+    def a_Attribute(self, e): return self.addr_of(e)
+
+    def a_Call(self, e):
+        f = e.func
+        if isinstance(f, ast.Name) and f.id == "mut":
+            return self.addr(e.args[0])
+        t = self.ty(e)
+        if isinstance(f, ast.Name) and f.id in self.info.structs:
+            return self.struct_ctor(e, self.info.structs[f.id])
+        if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id in self.info.paw:
+            return self.paw_call(e)       # Vec result: already an address
+        v = self.value(e)
+        tmp = self.alloca(self.lt(t, e), "ret")
+        self.b.store(v, tmp)
+        return tmp
+
+    def struct_ctor(self, e, st: StructT):
+        tmp = self.alloca(self.lt(st), st.name)
+        names = [n for n, _ in st.fields]
+        bound = list(zip(names, e.args)) + [(k.arg, k.value) for k in e.keywords]
+        for fname, val in bound:
+            idx = names.index(fname)
+            ft = st.fields[idx][1]
+            self.store_to(self.b.gep(tmp, [ci(0), ci(idx)], inbounds=True, source_etype=self.lt(st)), ft, val)
+        return tmp
+
+    def a_List(self, e):
+        t = self.ty(e)
+        if not isinstance(t, FixedList):
+            self.err("list literal exceeds the 64KB stack limit; build it with append()", e)
+        tmp = self.alloca(self.lt(t, e), "lit")
+        for i, x in enumerate(e.elts):
+            self.store_to(self.b.gep(tmp, [ci(0), ci(i)], inbounds=True, source_etype=self.lt(t)), t.elem, x)
+        return tmp
+
+    def a_BinOp(self, e):
+        if not (isinstance(e.op, ast.Mult) and isinstance(e.left, ast.List)):
+            self.err("aggregate arithmetic is not supported", e)
+        t = self.ty(e)
+        if not isinstance(t, FixedList):
+            self.err("repeated list exceeds the 64KB stack limit", e)
+        tmp = self.alloca(self.lt(t, e), "rep")
+        k = len(e.left.elts)
+        for rep in range(t.n // k):
+            for j, x in enumerate(e.left.elts):
+                p = self.b.gep(tmp, [ci(0), ci(rep * k + j)], inbounds=True, source_etype=self.lt(t))
+                self.store_to(p, t.elem, x)
+        return tmp
+
+    def addr_of(self, e):
+        """Address of a Subscript / Attribute location."""
+        if isinstance(e, ast.Attribute):
+            bt = self.ty(e.value)
+            if not isinstance(bt, StructT):
+                self.err("attribute access requires a @struct", e)
+            idx = [n for n, _ in bt.fields].index(e.attr)
+            return self.b.gep(self.addr(e.value), [ci(0), ci(idx)], inbounds=True, source_etype=self.lt(bt))
+        if isinstance(e.slice, (ast.Slice, ast.Tuple)):
+            self.err("only simple integer indexing is supported", e)
+        ptr, _, elem = self.seq_view(e.value)
+        idx = self.coerce(self.value(e.slice), self.ty(e.slice), I64)
+        return self.b.gep(ptr, [idx], inbounds=True, source_etype=self.lt(elem))
+
+    def seq_view(self, e):
+        """(data pointer, length i64, element Type) of a list-like expression."""
+        t = self.ty(e)
+        b = self.b
+        if isinstance(t, FixedList):
+            return self.addr(e), ci(t.n, I64T), t.elem
+        if isinstance(t, (Vec, StackVec)):
+            base = self.addr(e)
+            p = b.load(b.gep(base, [ci(0), ci(0)], inbounds=True, source_etype=VEC), typ=PTR)
+            n = b.load(b.gep(base, [ci(0), ci(1)], inbounds=True, source_etype=VEC), typ=I64T)
+            return p, n, t.elem
+        if isinstance(t, Span):
+            v = self.value(e)
+            return b.extract_value(v, 0), b.extract_value(v, 1), t.elem
+        if isinstance(t, Ptr):
+            return self.value(e), ci(0, I64T), t.elem
+        self.err(f"'{ast.unparse(e)}' of type {t.fmt()} is not list-like", e)
+
+
+def generate(tree: ast.Module, info: ModuleInfo, filename: str = "<mem>", shared: bool = False) -> tuple:
+    """Return (llvm_ir_text, set_of_paw_modules_used)."""
+    mg = ModuleGen(tree, info, filename, shared)
+    text = mg.emit()
+    return text, mg.paw_used

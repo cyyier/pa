@@ -1,0 +1,12 @@
+# Crossing zone: any Python library is allowed here, but the In -> Out signatures are locked.
+# (A real project would call requests / pandas here; this demo stays offline.)
+import numpy as np
+
+
+def fetch_series(n: i32, seed: i32) -> Vec[f64]:
+    rng = np.random.default_rng(seed)
+    return np.cumsum(rng.normal(0.0, 1.0, int(n)))
+
+
+def percentile(arr: span[f64], q: f64) -> f64:
+    return float(np.percentile(np.frombuffer(arr, dtype=np.float64), q))

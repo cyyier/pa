@@ -1,0 +1,58 @@
+Pa Language (.pa) — 完整架构与工程规范Slogan: Inspired by Python, 100% Python-syntax compatible. Written by AI, auditable by humans.一、 核心定位与双模式架构哲学Pa (.pa) 是一门 100% 兼容 Python 语法、函数体内零类型噪音、严格遵循 C++ 连续内存布局与 RAII 零 GC 模型、通过 LLVM 编译为原生机器码的系统级编程语言。1. 默认模式：Host-First 混合架构（CLI / 后台服务 / 数据流水线）彻底反转“新语言给 Python 当 C 扩展插件”的传统做法，确立 .pa 统领全局、.py 降级为沙盒工具箱 的主从架构：主宿主脊梁（main.pa & <domain>.pa — Sovereign Spine）：掌控 main() 入口、程序主循环、业务状态机与所有计算密集型逻辑。严禁直接 import 任何第三方 Python 动态库（如 requests、pandas、sqlalchemy）。外部沙盒工具箱（py_workers/<tool>.py — Stateless In -> Out Adapters）：纯粹的无状态辅助函数，仅在需要调用 Python 第三方生态库时由 .pa 通过内置原语 py_call 按需调用。所有动态对象（DataFrame、Response、ORM 实例）必须在 py_workers/ 内部创建、解析并销毁，绝不泄漏到 .pa。批处理铁律（Batching Rule）：严禁在 .pa 的紧凑循环（for / while）内直接调用 py_call。必须在 .pa 侧打包批量输入，单次跨越边界交由 py_workers/ 批处理后返回批量结果。2. 例外模式：🌐 Web / UI 框架控制反转（Frontend-Driven Apps）当项目依赖自带主事件循环的 Python Web/UI 框架（FastAPI、Flask、Django、Streamlit、Gradio）时：不强行用 .pa 包裹事件循环：保留 .py 框架作为极薄的 “HTTP/UI 路由外壳（Thin Router Shell）”，仅负责路由分发、鉴权中间件与前端渲染。100% 业务逻辑下沉 .pa：.py 路由函数内部零业务逻辑，标准三步流水线为：提取请求原始参数 (Clean In) -> 调用 @export 编译的 .pa 领域函数 -> 序列化返回值 (Clean Out) 响应前端。若 .pa 领域逻辑仍需外部库，依旧走 py_workers/ 隔离。二、 边界契约与可调试性铁律（Boundary Contract & Debuggability）为杜绝跨语言静默数据污染与互相甩锅，每一次 .pa $\leftrightarrow$ .py 跨越均执行强制双向安检：双向海关安检（Zero Silent Corruption）：出境安检（.pa -> py_workers）：pa_py_call 跨越前校验所有字段已初始化、无 NaN/Inf（除非显式 @allow_nan）、长度未越界。入境安检（py_workers -> .pa）：所有 py_workers/*.py 函数必须挂载由 AI 自动生成的 @pa_worker_contract(...) 装饰器，返回瞬间立即拦截 None、NaN/Inf 或字段类型漂移。Fail-Fast 黑匣子崩溃报告（pa_boundary_fault.json）：任意边界违例立即熔断，输出包含 direction（PA_TO_PY_IN / PY_TO_PA_OUT）、worker、violation（精确字段路径与非法值）以及 in_payload_snapshot（触发本次调用的完整 In 快照）的 JSON 报告。5 秒二分定责协议（Deterministic Bisection）：每个 .pa 模块与 py_workers/*.py 均配备纯原始类型/JSON 的 In -> Out 固件测试（tests/fixtures/<module>_io.json）。排障时直接拿 in_payload_snapshot 单独重放 py_workers：输入合法但输出错 = 100% .py 工人锅；工人输出全对但终态错 = 100% .pa 核心锅。三、 前端干净子集与编译器内置原语1. 语法白名单与黑名单维度允许（白名单）禁止（黑名单 / 触发自愈工单）类型标注仅在模块级 @struct 字段定义与 @export 跨语言入口处标注；普通函数体内 100% 零类型注解（全靠静态推导）函数体内手写冗余类型注解、Any、Union、Optional数据类型i64(默认整数), i32, i64, u8, f32, f64(默认浮点), bool, void, str_view/bytes_view ({u8*, i64}), 同构定长/动态列表, @struct异构列表 [1, "a", True]、动态 dict、set、tuple内置原语显式注册为 Compiler Intrinsics：py_call、mut(x)、span(arr, start, len)、copy(dst, src, count)、alloc(T, n)、free(p)Python 隐式堆切片 arr[1:5]、列表拼接 a + b、.extend()控制流与可读性if/elif/else、for i in range(...)、while、卫语句提前 return；单函数 ≤ 40 行，圈复杂度 ≤ 8，嵌套 ≤ 3 层；参数 > 2 个必须用关键字参数try/except、yield、闭包、lambda、eval/exec、元类、反射、*args/**kwargs2. C++ 一致拷贝与借用语义值语义赋值（b = a）：对连续数组、@struct、Vec<T> 执行完整深层连续拷贝（llvm.memcpy），b 与 a 内存完全独立（单次栈拷贝超 4KB 发 PA_W001 警告）；禁止 ptr[T] 裸赋值别名（防 Double Free）。默认只读借用（const T& vs T&）：容器与结构体传参默认零拷贝只读借用；函数体内若需修改元素或 .append()，调用处必须显式包裹 mut(arr)。四、 逃逸分析与连续内存分级铁律（Zero Pointer-Chasing, Zero GC）彻底封杀 Python PyObject* 指针数组，所有列表均按三级决策树编译为连续平坦内存：Level 1 — 留在栈上（Stack Allocation，0 堆开销）：所有标量、@struct、编译期定长同构列表 list[T, N]（映射为 LLVM [N x T]，多维嵌套直接打平，总大小 ≤ 64KB）。逃逸分析命中的动态列表（StackBoundedVec[T, MAX_N]）：对 res = [] + res.append(x)，若 res 不逃逸出当前函数且写入次数存在已知常量上界 MAX_N（且 ≤ 64KB），直接在栈上 alloca [MAX_N x T] + 局部计数器 len，.append() 编译为指针偏移写入 + len += 1，零 malloc/free。Level 2 — 连续堆数组 Vec<T>（RAII 确定性释放，0 GC 停顿）：上限不可静态预测、作为返回值逃逸、或超过 64KB 栈阈值的同构动态列表，自动降级为 { T* ptr, i64 len, i64 cap } 连续三元组（初始 cap=16，满容 2 倍 realloc）。未逃逸时在函数所有 return 出口前自动插桩 free(ptr)；逃逸返回时所有权移交调用者作用域负责 free。Level 3 — 红牌拦截，逼 AI 升级重构（Hard Compile Error）：异构列表（[1, "apple", True]） $\rightarrow$ 报 PA_E030，输出 @struct 重构手术单，将二维混合表自动进化为连续结构体数组 Vec<Record>（AoS，缓存命中率 100%）。无法推导元素类型的空列表 $\rightarrow$ 报 PA_E011；局部变量 span 逃逸返回（悬空指针） $\rightarrow$ 报 PA_E040；显式 alloc 漏 free 或 UAF $\rightarrow$ 报 PA_E004。五、 AI 自主审查诊断协议与 VS Code 透视1. --ai-diagnostic 结构化自愈工单编译器报错首要面向 Coding Agent，输出自包含 JSON 工单：必备字段：code、category、severity、skill_rule_ref、location、summary、inferred_context（推导出的底层类型与布局）、causal_chain（从定义到违例的完整因果链）、source_context（带行号上下 3 行源码切片）、repair_plan（含 strategy、anti_patterns_to_avoid 禁止反模式、suggested_patches 确定性替换代码）。2. VS Code LSP 透明透视（pac lsp）Inlay Hints（行内虚拟提示）：在无注解源码旁实时渲染半透明类型与内存策略，如 : list[f64, 16] (128B flat)、: StackVec<i64, max=64> (Zero-Heap)、: Vec<Record> (RAII)、[memcpy 128B]、: const list[f64, 16]&。Hover（鼠标悬浮审计卡片）：悬停展示 LLVM IR 布局、精确字节大小与步长、栈/堆归属、RAII 自动释放行号、函数圈复杂度。六、 三大内置 AI 技能矩阵 (skills/)技能包适用场景核心工作流与门禁pa-coder从头编写新项目按 Host-First（或 Web Router Shell）搭骨架；用 DOD/AoS 连续内存写零注解 .pa；第三方库隔离至 py_workers/ + @pa_worker_contract；跑 pac check --ai-diagnostic 自愈。py-to-pa现有 Python 仓库重构加速先过三色灯熔断门禁（Feasibility Gate）：• 🟢 绿灯：纯计算/无外部依赖 $\rightarrow$ 全量转 .pa。• 🟡 黄灯：含第三方库或 Web 框架 $\rightarrow$ 反转控制权（.pa 宿主 + py_workers/）或保留极薄 Web 路由壳。• 🔴 红灯：重度元编程/动态框架强耦合无法剥离 $\rightarrow$ 立即熔断拒单（STATUS: RED - Keep in .py worker layer + 一句话卡点）。过审后生成双端对拍测试与耗时报告。cpp-to-pa遗留 C++ 安全现代化将 std::array/std::vector/struct/std::span/const T& 剥离宏与裸指针，1:1 无损重构为纯净 .pa，双二进制 Fuzzing 字节级对拍。七、 项目目录结构与两阶段开发路线Plaintextpa/
+├── pyproject.toml              # 依赖: llvmlite, pygls, pytest; 入口: pac = "pa_lang.cli:main"
+├── ARCHITECTURE.md             # 本文档（项目最高宪法）
+├── pa_lang/
+│   ├── __init__.py
+│   ├── cli.py                  # pac check [--ai-diagnostic] / pac build [-o bin | --shared] / pac lsp
+│   ├── types.py                # 连续内存类型系统 & Compiler Intrinsics 注册表
+│   ├── infer.py                # 零注解双向类型推导 + 栈上界逃逸分析 + Vec<T> 升级
+│   ├── diagnostics.py          # AI 自主审查 JSON 修复工单与 @struct 手术单引擎
+│   ├── validator.py            # Host 边界隔离 / 批处理校验 / C++ 拷贝借用 / 可读性铁律
+│   ├── codegen.py              # llvmlite IR 生成 (显式声明 malloc/realloc/free/pa_py_call & llvm.memcpy)
+│   ├── runtime_bridge.c        # 极简内嵌 CPython 桥接与边界安检运行时
+│   └── lsp_server.py           # pygls Inlay Hints + Hover 内存审计 + 实时诊断
+├── skills/
+│   ├── pa-coder/SKILL.md
+│   ├── py-to-pa/SKILL.md
+│   └── cpp-to-pa/SKILL.md
+├── examples/
+│   └── pipeline_demo/
+│       ├── main.pa             # Pa 主宿主示例
+│       └── py_workers/
+│           └── data_fetcher.py # 带 @pa_worker_contract 的沙盒工人
+└── tests/
+    ├── test_infer.py
+    ├── test_validator.py
+    └── test_codegen.py
+两阶段执行策略（防上下文截断）第一枪（前端与宪法落地）：完成骨架 + types.py + infer.py + diagnostics.py + validator.py + test_infer.py + test_validator.py，确保零注解推导、栈上界分析、PA_E030 手术单、第三方库 import 拦截与循环内 py_call 拦截 100% 绿灯。第二枪（后端、桥接、LSP 与技能包）：完成 codegen.py（顶部显式声明 libc 与 bridge 符号）+ runtime_bridge.c + cli.py（同时支持独立二进制与 --shared 供 Web 路由壳调用）+ lsp_server.py + 三大 SKILL.md + pipeline_demo + test_codegen.py 端到端实测验证。
+
+---
+
+## 修订 R1：`.paw` 跨界区取代 `py_workers/*.py`（本节优先于前文）
+
+| 后缀 | 职责 | 规则 |
+|---|---|---|
+| `*.pa` | 纯血原生区，100% 编译为 LLVM 机器码 | 禁止 import 第三方 Python 库（`PA_E001`）；只可 import `pa` / `pa_lang` 与同项目的 `.paw`；函数体零类型注解 |
+| `*.paw` | 跨界安检区，标准 Python | 可随意 import numpy/pandas/requests；所有公开（非 `_` 开头）函数必须写死静态 In -> Out 签名（`PA_E080`/`PA_E082`），相当于 C 的 `.h` |
+
+- **边界类型**：入参 `i32 i64 u8 f32 f64 bool str_view span[T] list[T,N] Vec[T]`（T 为数值标量）；返回 `标量 | Vec[T] | void`。
+- **前端**：`infer.py` 遇到 `import x` 且存在 `x.paw` 时，只解析其顶层函数签名并注册进符号表，`x.f(arr)` 的返回类型静态推导；实参不匹配报 `PA_E090`。
+- **后端**：`codegen.py` 不编译 `.paw`；调用点生成封送桩 → `pa_call_paw(mod, fn, args, nargs, ret_tag, ret_elem, &ret)`（`runtime_bridge.c`）。连续内存以 `PyMemoryView_FromMemory` 零拷贝递给 Python。
+- **双向安检**：出境查 NaN/Inf/NULL/负长度；入境查 None/NaN/Inf/类型漂移/整数越界/异常；违例写 `pa_boundary_fault.json`（`direction`、`worker`、`violation`、`in_payload_snapshot`）并以退出码 70 熔断。`.paw` 不再需要 `@pa_worker_contract` 装饰器。
+- **批处理铁律不变**：循环内调用 `.paw`（或经 helper 间接调用）报 `PA_E002`。
+- **LSP**：`.paw` 调用点行内标注 `[🌉 .paw FFI -> f64]`。
+- **目录**：`examples/pipeline_demo/{main.pa, data_fetcher.paw}`；构建期把 `sys.base_prefix`、`sys.path` 与 `.paw` 目录烘焙进 `runtime_bridge.o`（可用 `PA_PATH` 环境变量追加 `.paw` 搜索目录）。
+- **ABI（`pac build --shared`）**：`@export` 函数以原名导出；标量按值传递，`list[T,N]` 传元素首地址，`Vec[T]` 传指向 `{T*, i64 len, i64 cap}` 的指针，`span[T]` 传 `{T*, i64}` 值。
+
+### 已知限制
+- `x = []` 只经 `mut(x)` 传给被调函数追加、自身从不 `append` 时，无法推导元素类型（`PA_E011`），需先 `append` 一个值。
+- 整数除法 `//` 与 `%` 为 C 语义（向零截断），与 Python 在负数上不同。
+- 代码生成器目前不支持：多维下标 `m[i, j]`、字符串拼接/索引、结构体跨 `.paw` 边界。
+
+### 修订 R2
+- `@allow_nan`：装饰 `.paw` 函数后，该函数调用的出境（参数）与入境（返回值）NaN/Inf 安检都被放行；其余检查（None、类型漂移、越界、NULL、负长度）照常。运行时 `allow_nan` 是 `.paw` 内可直接使用的内置装饰器。
+- `break` / `continue` 已支持（`for`、`while`）。
+- `py-to-pa` 技能新增「负数 `//`、`%` 语义差异」强制提醒。
+
+### 修订 R3
+- **默认整数字面量为 `i64`**（原 `i32`）：`range` 循环变量、`int(x)`、整数运算默认 64 位，消除线性同余/时间戳/大累加器的静默溢出。`i32`/`u8` 仅在 `@struct` 字段、`@export` 签名、`.paw` 签名或需要省内存/对齐 C ABI 时显式标注；`i32` 值与 `i64` 混算时提升为 `i64`。注意：`[1, 2, 3]` 现在是 `list[i64, 3]`，传给 `span[i32]` 形参的 `.paw` 会报 `PA_E090`，需改用 `span[i64]` 或显式 i32 容器。

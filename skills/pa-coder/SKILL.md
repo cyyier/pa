@@ -1,0 +1,27 @@
+---
+name: pa-coder
+description: Write new Pa (.pa) projects from scratch with Host-First architecture, zero-annotation bodies, contiguous-memory data layout and .paw crossing modules for the Python ecosystem. Use when creating or extending Pa code.
+---
+
+# pa-coder
+
+## Workflow
+1. **Skeleton** – Host-First: `main.pa` (+ `<domain>.pa`) owns `main()`, the loop and all compute. Python libraries live only in `<tool>.paw`. For FastAPI/Flask/Streamlit apps keep a thin `.py` router shell that calls `@export`-ed `.pa` functions (built with `pac build --shared`).
+2. **Write `.pa`** – no annotations inside function bodies (only `@struct` fields and `@export` signatures); no `try`, `yield`, closures, `lambda`, `eval`, `*args`; no dict/set/tuple; functions ≤ 40 lines, complexity ≤ 8, nesting ≤ 3; > 2 args => keyword args.
+3. **Data layout** – prefer `[0.0] * N` fixed lists and `@struct` records (AoS, `Vec<Record>`); build dynamic lists with `append` in loops with constant bounds so they stay on the stack. Never mix element types in one list (`PA_E030`).
+4. **Borrowing** – containers are passed as read-only borrows; if the callee mutates (`append`, `x[i] = ...`, `p.f = ...`) wrap the argument in `mut(...)`. Assignment `b = a` deep-copies.
+5. **Python ecosystem** – create `<tool>.paw`: standard Python, any imports, but every public function has a locked signature, e.g. `def f(arr: span[f64], k: f64) -> f64:`. Boundary types: `i32 i64 u8 f32 f64 bool str_view span[T] list[T,N] Vec[T]`; return scalar | `Vec[T]` | `void`. Call it from `.pa` as `import tool; x = tool.f(arr)`. **Never call a `.paw` function inside a loop** (`PA_E002`): pack the batch first.
+6. **Gate** – run `pac check --ai-diagnostic <dir>` and apply every ticket's `repair_plan.suggested_patches` until it is green; then `pac build main.pa -o app`.
+
+## Debugging a boundary fault
+`pa_boundary_fault.json` has `direction`, `worker`, `violation`, `in_payload_snapshot`. Replay the snapshot directly against the `.paw` function: valid input + bad output => the `.paw` is wrong; correct worker output but wrong final state => the `.pa` core is wrong.
+
+## Quick reference
+| Code | Meaning |
+|---|---|
+| PA_E001 | third-party import in `.pa` -> move to `.paw` |
+| PA_E002 | boundary call in loop -> batch |
+| PA_E011 / E030 | empty list uninferable / heterogeneous list -> `@struct` |
+| PA_E040 / E004 / E070 | span escape / alloc leak or UAF / ptr alias |
+| PA_E050 / E051 | missing `mut()` / use keyword args |
+| PA_E080 / E082 / E090 | `.paw` signature missing / bad type / call mismatch |

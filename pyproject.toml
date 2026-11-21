@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pa-lang"
+version = "0.1.0"
+description = "Pa language: Python-syntax, C++-layout, LLVM-compiled systems language"
+requires-python = ">=3.10"
+dependencies = ["llvmlite", "pygls"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+pac = "pa_lang.cli:main"
+
+[tool.setuptools]
+packages = ["pa_lang"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
