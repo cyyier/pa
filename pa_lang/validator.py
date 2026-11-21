@@ -340,8 +340,12 @@ def default_search_dirs(filename: str) -> list:
     return [d]
 
 
-def check_source(source: str, filename: str = "<mem>", kind: Optional[str] = None, search_dirs=None) -> list:
-    """Run all front-end checks. kind: 'pa' (default) or 'paw' (inferred from *.paw)."""
+def check_source(source: str, filename: str = "<mem>", kind: Optional[str] = None, search_dirs=None,
+                 mode: str = "dev") -> list:
+    """Run all front-end checks. kind: 'pa' (default) or 'paw' (inferred from *.paw).
+
+    mode 'dev' additionally runs the deep static In -> Out lint of .paw bodies; 'prod' only checks signatures.
+    """
     sink = DiagnosticSink(source, filename)
     try:
         tree = ast.parse(source, filename)
@@ -350,7 +354,7 @@ def check_source(source: str, filename: str = "<mem>", kind: Optional[str] = Non
         return sink.items
     kind = kind or ("paw" if filename.endswith(".paw") else "pa")
     if kind == "paw":
-        parse_paw(source, filename, sink)
+        parse_paw(source, filename, sink, lint=(mode == "dev"))
     else:
         dirs = search_dirs if search_dirs is not None else default_search_dirs(filename)
         Validator(tree, sink, dirs).run()
@@ -359,6 +363,6 @@ def check_source(source: str, filename: str = "<mem>", kind: Optional[str] = Non
     return sink.items
 
 
-def check_file(path: str) -> list:
+def check_file(path: str, mode: str = "dev") -> list:
     with open(path, encoding="utf-8") as f:
-        return check_source(f.read(), path)
+        return check_source(f.read(), path, mode=mode)

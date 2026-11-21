@@ -8,12 +8,12 @@ import pytest
 from pa_lang.build import BuildError, compile_pa
 
 
-def run_pa(tmp_path, src, paws=None, expect_code=0, env=None):
+def run_pa(tmp_path, src, paws=None, expect_code=0, env=None, mode="dev"):
     for name, body in (paws or {}).items():
         (tmp_path / f"{name}.paw").write_text(textwrap.dedent(body))
     main = tmp_path / "main.pa"
     main.write_text(textwrap.dedent(src))
-    exe = compile_pa(str(main), out=str(tmp_path / "prog"))
+    exe = compile_pa(str(main), out=str(tmp_path / "prog"), mode=mode)
     r = subprocess.run([exe], capture_output=True, text=True, cwd=tmp_path, env=env)
     assert r.returncode == expect_code, (r.stdout, r.stderr)
     return r
@@ -162,7 +162,7 @@ def test_paw_string_and_int_args(tmp_path):
 ])
 def test_inbound_customs_fault_report(tmp_path, body, direction, needle):
     run_pa(tmp_path, "import w\n\ndef main():\n    y = w.f(1.0)\n    print(y)\n    return 0\n",
-           paws={"w": body}, expect_code=70)
+           paws={"w": body}, expect_code=70, mode="prod")   # dev would reject these workers statically
     fault = json.loads((tmp_path / "pa_boundary_fault.json").read_text())
     assert fault["direction"] == direction and fault["worker"] == "w.f"
     assert needle in fault["violation"]
@@ -187,7 +187,7 @@ def test_outbound_customs_rejects_nan(tmp_path):
 def test_bisection_replay_of_snapshot(tmp_path):
     """5-second bisection: replay in_payload_snapshot against the bare .paw worker."""
     worker = "def f(x: f64) -> f64:\n    return None\n"
-    run_pa(tmp_path, "import w\n\ndef main():\n    y = w.f(2.5)\n    return 0\n", paws={"w": worker}, expect_code=70)
+    run_pa(tmp_path, "import w\n\ndef main():\n    y = w.f(2.5)\n    return 0\n", paws={"w": worker}, expect_code=70, mode="prod")
     snap = json.loads((tmp_path / "pa_boundary_fault.json").read_text())["in_payload_snapshot"]
     ns = {}
     exec("f64 = float\n" + worker, ns)

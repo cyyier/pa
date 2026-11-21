@@ -50,8 +50,15 @@ def python_flags() -> tuple:
     return inc, libdir, f"python{ver}"
 
 
-def compile_pa(path: str, out: Optional[str] = None, shared: bool = False, emit_ir: bool = False) -> str:
-    """Compile a .pa file. Returns the output path (or the IR text when emit_ir)."""
+def compile_pa(path: str, out: Optional[str] = None, shared: bool = False, emit_ir: bool = False,
+               mode: str = "dev") -> str:
+    """Compile a .pa file. Returns the output path (or the IR text when emit_ir).
+
+    dev : deep static lint of every imported .paw + full runtime boundary customs (element scans, big snapshots)
+    prod: signature check only + light runtime customs (None/type/range/length; no per-element NaN scans)
+    """
+    if mode not in ("dev", "prod"):
+        raise BuildError(f"unknown mode '{mode}' (use dev or prod)")
     with open(path, encoding="utf-8") as f:
         source = f.read()
     dirs = default_search_dirs(path)
@@ -61,6 +68,12 @@ def compile_pa(path: str, out: Optional[str] = None, shared: bool = False, emit_
         raise BuildError("\n".join(d.brief() for d in errors))
     tree = ast.parse(source, path)
     info = analyze(tree, DiagnosticSink(source, path), source, path, dirs)
+    paw_errors = []
+    for pm in info.paw.values():
+        with open(pm.path, encoding="utf-8") as f:
+            paw_errors += [d for d in check_source(f.read(), pm.path, mode=mode) if d.severity == "error"]
+    if paw_errors:
+        raise BuildError("\n".join(d.brief() for d in paw_errors))
     try:
         ir_text, paws = generate(tree, info, os.path.basename(path), shared)
     except CodegenError as e:
@@ -74,7 +87,7 @@ def compile_pa(path: str, out: Optional[str] = None, shared: bool = False, emit_
             f.write(ir_to_object(ir_text))
         objs, libs = [obj], ["-lm"]
         if paws:
-            objs.append(build_bridge(tmp, [os.path.dirname(os.path.abspath(p.path)) for p in info.paw.values()] + [os.path.abspath(d) for d in dirs]))
+            objs.append(build_bridge(tmp, [os.path.dirname(os.path.abspath(p.path)) for p in info.paw.values()] + [os.path.abspath(d) for d in dirs], mode))
             inc, libdir, lib = python_flags()
             libs += [f"-L{libdir}", f"-l{lib}", f"-Wl,-rpath,{libdir}", "-lpthread", "-ldl", "-lutil"]
         cmd = ["gcc", "-O2"] + (["-shared", "-fPIC"] if shared else []) + objs + ["-o", out] + libs
@@ -84,13 +97,15 @@ def compile_pa(path: str, out: Optional[str] = None, shared: bool = False, emit_
     return out
 
 
-def build_bridge(tmp: str, pawdirs: list) -> str:
+def build_bridge(tmp: str, pawdirs: list, mode: str = "dev") -> str:
     inc, _, _ = python_flags()
     pypath = ":".join(p for p in sys.path if p and os.path.isdir(p))
     obj = os.path.join(tmp, "runtime_bridge.o")
     cmd = ["gcc", "-O2", "-fPIC", "-c", BRIDGE_C, "-o", obj, f"-I{inc}",
            f'-DPA_PYHOME="{sys.base_prefix}"', f'-DPA_PYPATH="{pypath}"',
-           f'-DPA_PAWDIRS="{":".join(dict.fromkeys(pawdirs))}"']
+           f'-DPA_PAWDIRS="{":".join(dict.fromkeys(pawdirs))}"',
+           f'-DPA_MODE="{mode}"', f"-DPA_DEEP_CHECKS={1 if mode == 'dev' else 0}",
+           f"-DPA_SNAP_LIMIT={1024 if mode == 'dev' else 16}"]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode:
         raise BuildError("bridge compile failed:\n" + r.stderr)

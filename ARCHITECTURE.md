@@ -67,3 +67,14 @@ Pa Language (.pa) — 完整架构与工程规范Slogan: Inspired by Python, 100
 `pa-coder` 与 `py-to-pa` 技能新增硬规矩：①禁止在调用参数里直接拼接字符串，必须先绑定局部变量再传参（RAII 才能释放）；②空列表跨多层 `mut()` 传递前，须在顶层先确定元素类型或只做单层 `mut()` 填充；③禁止字符串切片；④`.paw` 禁止返回字符串，改用 `Vec[u8]` 字符数组返回。
 
 上述 R5 规矩现已由编译器强制：`PA_E072`（临时 String 只能被赋值给局部、return 或并入同一条拼接链）、`PA_E011`（消息指出 `mut()` 只被转手到哪个被调函数）、`PA_E071`（字符串切片专属提示）、`PA_E082`（`.paw` 返回 `str`/`bytes` 时提示改用 `Vec[u8]`）。
+
+### 修订 R6：dev / prod 双编译模式
+`pac check|build --mode dev|prod`（默认 `dev`）。
+
+| | dev | prod |
+|---|---|---|
+| 编译期 `.paw` 静态检查 | 签名检查 + **深度 In→Out lint**：`PA_E083`（返回 None / 缺 return 路径 / 返回字面量或 `float()`、`int()`、`len()` 等与声明类型不符）、`PA_E084`（写入只读的 `span`/`list`/`Vec` 入参） | 仅签名检查（`PA_E080`/`E082`）及调用点 `PA_E090` 对照 |
+| 运行期安检 | 全量：标量 + 缓冲区逐元素 NaN/Inf 扫描（出入境）、None/类型漂移/越界；快照最多 1024 元素 | 轻量：标量 NaN/Inf、None/类型漂移/越界、NULL/长度；**不做缓冲区逐元素扫描**；快照最多 16 元素 |
+| `pa_boundary_fault.json` | 含 `"mode": "dev"` | 含 `"mode": "prod"` |
+
+实现：`validator.check_source(mode=)`、`paw.lint_function`、`build.compile_pa(mode=)`；桥接层以 `-DPA_DEEP_CHECKS`、`-DPA_SNAP_LIMIT`、`-DPA_MODE` 在编译 `runtime_bridge.c` 时定型。`@allow_nan` 在两种模式下语义相同。

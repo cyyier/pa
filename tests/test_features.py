@@ -247,3 +247,95 @@ def test_paw_returns_char_array_end_to_end(tmp_path):
             return list(s.upper().encode("utf-8"))
     """})
     assert r.stdout.strip() == "2 72 73"
+
+
+# ---------------------------------------------------------------- dev vs prod
+def test_dev_lint_catches_bad_returns_and_readonly_writes():
+    def c(body):
+        return [(d.code) for d in check_source(textwrap.dedent(body), "w.paw", mode="dev")]
+    assert c("def f(x: f64) -> f64:\n    return None\n") == ["PA_E083"]
+    assert c("def f(x: f64) -> f64:\n    return 1\n") == ["PA_E083"]
+    assert c("def f(x: f64) -> f64:\n    if x > 0:\n        return 1.0\n") == ["PA_E083"]       # falls off the end
+    assert c("def f(x: f64) -> i64:\n    return float(x)\n") == ["PA_E083"]
+    assert c("def f(x: f64) -> bool:\n    return len('a')\n") == ["PA_E083"]
+    assert c("def f(x: f64) -> Vec[f64]:\n    return 3.0\n") == ["PA_E083"]
+    assert c("def f(x: f64) -> void:\n    return 1\n") == ["PA_E083"]
+    assert c("def f(a: span[f64]) -> f64:\n    a[0] = 1.0\n    return 0.0\n") == ["PA_E084"]
+    good = ("def f(a: span[f64], k: f64) -> f64:\n    if k > 0:\n        return float(sum(a))\n    raise ValueError('x')\n\n"
+            "def g(x: f64) -> bool:\n    return x > 0\n\n"
+            "def h(x: f64) -> void:\n    print(x)\n")
+    assert c(good) == []
+
+
+def test_prod_skips_deep_lint():
+    src = "def f(x: f64) -> f64:\n    return 1\n"
+    assert [d.code for d in check_source(src, "w.paw", mode="prod")] == []
+    assert [d.code for d in check_source(src, "w.paw", mode="dev")] == ["PA_E083"]
+
+
+def test_dev_build_rejects_bad_paw_but_prod_defers_to_runtime(tmp_path):
+    from pa_lang.build import BuildError
+    (tmp_path / "w.paw").write_text("def f(x: f64) -> f64:\n    return 1\n")
+    main = tmp_path / "main.pa"
+    main.write_text("import w\n\ndef main():\n    y = w.f(1.0)\n    return 0\n")
+    with pytest.raises(BuildError, match="PA_E083"):
+        compile_pa(str(main), out=str(tmp_path / "dev_bin"), mode="dev")
+    exe = compile_pa(str(main), out=str(tmp_path / "prod_bin"), mode="prod")
+    r = subprocess.run([exe], capture_output=True, text=True, cwd=tmp_path)
+    assert r.returncode == 70 and "drifted" in r.stderr
+    import json
+    assert json.loads((tmp_path / "pa_boundary_fault.json").read_text())["mode"] == "prod"
+
+
+NAN_BUF_PA = """
+    import w
+
+    def main():
+        z = 0.0
+        bad = z / z
+        a = [1.0, 2.0, 3.0]
+        a[2] = bad
+        n = w.count(a)
+        print(n)
+        return 0
+"""
+NAN_BUF_PAW = "def count(a: span[f64]) -> i64:\n    return len(a)\n"
+
+
+def test_runtime_customs_deep_in_dev_light_in_prod(tmp_path):
+    import json
+    run_pa(tmp_path, NAN_BUF_PA, paws={"w": NAN_BUF_PAW}, expect_code=70, mode="dev")
+    fault = json.loads((tmp_path / "pa_boundary_fault.json").read_text())
+    assert fault["mode"] == "dev" and "args[0][2]" in fault["violation"]
+    (tmp_path / "pa_boundary_fault.json").unlink()
+    r = run_pa(tmp_path, NAN_BUF_PA, paws={"w": NAN_BUF_PAW}, mode="prod")          # no per-element scan
+    assert r.stdout.strip() == "3" and not (tmp_path / "pa_boundary_fault.json").exists()
+
+
+def test_prod_still_catches_scalar_nan_and_truncates_snapshot(tmp_path):
+    import json
+    src = """
+        import w
+
+        def main():
+            big = [1.0] * 100
+            z = 0.0
+            bad = z / z
+            n = w.f(big, bad)
+            return 0
+    """
+    run_pa(tmp_path, src, paws={"w": "def f(a: span[f64], x: f64) -> f64:\n    return x\n"}, expect_code=70, mode="prod")
+    fault = json.loads((tmp_path / "pa_boundary_fault.json").read_text())
+    assert "NaN" in fault["violation"]
+    buf = fault["in_payload_snapshot"][0]
+    assert buf["len"] == 100 and len(buf["values"]) == 16 and buf["truncated"] is True
+
+
+def test_cli_mode_flag(tmp_path):
+    (tmp_path / "w.paw").write_text("def f(x: f64) -> f64:\n    return None\n")
+    (tmp_path / "main.pa").write_text("import w\n\ndef main():\n    y = w.f(1.0)\n    return 0\n")
+    from pa_lang.cli import main as pac
+    assert pac(["check", str(tmp_path), "--mode", "dev"]) == 1
+    assert pac(["check", str(tmp_path), "--mode", "prod"]) == 0
+    assert pac(["build", str(tmp_path / "main.pa"), "-o", str(tmp_path / "x"), "--mode", "dev"]) == 1
+    assert pac(["build", str(tmp_path / "main.pa"), "-o", str(tmp_path / "x"), "--mode", "prod"]) == 0

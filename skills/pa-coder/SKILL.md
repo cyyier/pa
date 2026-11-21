@@ -11,7 +11,8 @@ description: Write new Pa (.pa) projects from scratch with Host-First architectu
 3. **Data layout** – prefer `[0.0] * N` fixed lists and `@struct` records (AoS, `Vec<Record>`); build dynamic lists with `append` in loops with constant bounds so they stay on the stack. Never mix element types in one list (`PA_E030`).
 4. **Borrowing** – containers are passed as read-only borrows; if the callee mutates (`append`, `x[i] = ...`, `p.f = ...`) wrap the argument in `mut(...)`. Assignment `b = a` deep-copies.
 5. **Python ecosystem** – create `<tool>.paw`: standard Python, any imports, but every public function has a locked signature, e.g. `def f(arr: span[f64], k: f64) -> f64:`. Boundary types: `i32 i64 u8 f32 f64 bool str_view span[T] list[T,N] Vec[T]`; return scalar | `Vec[T]` | `void`. Call it from `.pa` as `import tool; x = tool.f(arr)`. **Never call a `.paw` function inside a loop** (`PA_E002`): pack the batch first.
-6. **Gate** – run `pac check --ai-diagnostic <dir>` and apply every ticket's `repair_plan.suggested_patches` until it is green; then `pac build main.pa -o app`.
+6. **Modes** – develop with `pac build --mode dev` (default): deep static lint of every imported `.paw` (`PA_E083` wrong/missing return, `PA_E084` writes to read-only inputs) and full runtime boundary customs. Ship with `--mode prod`: signature check only and light runtime customs (no per-element NaN scans). Always get dev green before building prod.
+7. **Gate** – run `pac check --ai-diagnostic <dir>` and apply every ticket's `repair_plan.suggested_patches` until it is green; then `pac build main.pa -o app`.
 
 ## Hard rules for strings and `mut()` (enforced by the compiler)
 1. **No string concatenation inside call arguments** (`PA_E072`; also flagged: a String-returning call used as an operand, comparison, index or `s += a + b`). A concat used as a temporary (`f("a" + b)`, `tool.g(x + y)`) is never freed. Always bind it to a local first so RAII owns and frees it:

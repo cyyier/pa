@@ -25,7 +25,7 @@ def collect(paths: list) -> list:
 def cmd_check(args) -> int:
     diags = []
     for f in collect(args.paths):
-        diags += check_file(f)
+        diags += check_file(f, mode=args.mode)
     if args.ai_diagnostic:
         print(json.dumps([d.to_dict() for d in diags], ensure_ascii=False, indent=2))
     else:
@@ -37,7 +37,7 @@ def cmd_check(args) -> int:
 def cmd_build(args) -> int:
     from .build import BuildError, compile_pa
     try:
-        out = compile_pa(args.file, out=args.output, shared=args.shared, emit_ir=args.emit_ir)
+        out = compile_pa(args.file, out=args.output, shared=args.shared, emit_ir=args.emit_ir, mode=args.mode)
     except BuildError as e:
         print(e, file=sys.stderr)
         return 1
@@ -57,10 +57,13 @@ def main(argv=None) -> int:
     c = sub.add_parser("check", help="front-end checks")
     c.add_argument("paths", nargs="+")
     c.add_argument("--ai-diagnostic", action="store_true", help="emit JSON repair tickets")
+    c.add_argument("--mode", choices=("dev", "prod"), default="dev", help="dev: deep .paw In->Out lint (default)")
     c.set_defaults(fn=cmd_check)
     b = sub.add_parser("build", help="compile a .pa file")
     b.add_argument("file")
     b.add_argument("-o", "--output")
+    b.add_argument("--mode", choices=("dev", "prod"), default="dev",
+                   help="dev: deep .paw lint + full boundary customs; prod: signature check + light customs")
     b.add_argument("--shared", action="store_true", help="build a shared library of @export functions")
     b.add_argument("--emit-ir", action="store_true", help="print LLVM IR instead of linking")
     b.set_defaults(fn=cmd_build)

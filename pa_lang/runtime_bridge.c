@@ -13,6 +13,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef PA_MODE
+#define PA_MODE "dev"
+#endif
+#ifndef PA_DEEP_CHECKS
+#define PA_DEEP_CHECKS 1      /* dev: element-wise NaN/Inf scans of buffers; prod: 0 */
+#endif
+#ifndef PA_SNAP_LIMIT
+#define PA_SNAP_LIMIT 1024    /* buffer elements kept in in_payload_snapshot */
+#endif
+
 enum { T_INT = 0, T_FLOAT = 1, T_BOOL = 2, T_STR = 3, T_BUF = 4, T_VOID = 5 };
 enum { E_I32 = 0, E_I64 = 1, E_U8 = 2, E_F32 = 3, E_F64 = 4, E_BOOL = 5 };
 
@@ -81,7 +91,7 @@ static void snapshot(SB *b, const PaArg *args, int nargs) {
         else if (a->tag == T_BOOL) sb_printf(b, "\"type\":\"bool\",\"value\":%s}", a->i ? "true" : "false");
         else if (a->tag == T_STR) { sb_printf(b, "\"type\":\"str_view\",\"value\":"); sb_json_str(b, (const char *)a->p, a->p ? (size_t)a->n : 0); sb_printf(b, "}"); }
         else {
-            int64_t lim = a->n < 1024 ? a->n : 1024;
+            int64_t lim = a->n < PA_SNAP_LIMIT ? a->n : PA_SNAP_LIMIT;
             sb_printf(b, "\"type\":\"buffer<%s>\",\"len\":%lld,\"truncated\":%s,\"values\":[", ELEM_NAME[a->elem],
                       (long long)a->n, a->n > lim ? "true" : "false");
             for (int64_t k = 0; k < lim && a->p; k++) { if (k) sb_printf(b, ","); sb_num(b, elem_at(a, k)); }
@@ -93,7 +103,7 @@ static void snapshot(SB *b, const PaArg *args, int nargs) {
 
 static void fault(const char *direction, const char *worker, const char *violation, const PaArg *args, int nargs) {
     SB b = {0};
-    sb_printf(&b, "{\n  \"direction\": \"%s\",\n  \"worker\": ", direction);
+    sb_printf(&b, "{\n  \"mode\": \"%s\",\n  \"direction\": \"%s\",\n  \"worker\": ", PA_MODE, direction);
     sb_json_str(&b, worker, strlen(worker));
     sb_printf(&b, ",\n  \"violation\": ");
     sb_json_str(&b, violation, strlen(violation));
@@ -196,7 +206,7 @@ static void check_out(const char *worker, const PaArg *args, int nargs) {
             if (a->n < 0) { snprintf(msg, sizeof msg, "args[%d]: negative length %lld", i, (long long)a->n); fault("PA_TO_PY_IN", worker, msg, args, nargs); }
             if (a->n > 0 && !a->p) { snprintf(msg, sizeof msg, "args[%d]: uninitialized (NULL) pointer with length %lld", i, (long long)a->n); fault("PA_TO_PY_IN", worker, msg, args, nargs); }
         }
-        if (!g_allow_nan && a->tag == T_BUF && (a->elem == E_F32 || a->elem == E_F64)) {
+        if (PA_DEEP_CHECKS && !g_allow_nan && a->tag == T_BUF && (a->elem == E_F32 || a->elem == E_F64)) {
             for (int64_t k = 0; k < a->n; k++) {
                 double v = elem_at(a, k);
                 if (!isfinite(v)) {
@@ -272,7 +282,7 @@ static void unbox_buffer(PyObject *o, int elem, PaRet *out, const char *worker, 
         }
         Py_DECREF(seq);
     }
-    if (is_float && !g_allow_nan) {
+    if (PA_DEEP_CHECKS && is_float && !g_allow_nan) {
         for (int64_t k = 0; k < n; k++) {
             double v = elem == E_F32 ? ((float *)out->p)[k] : ((double *)out->p)[k];
             if (!isfinite(v)) IN_FAULT("return[%lld]: non-finite value %s", (long long)k, isnan(v) ? "NaN" : "Inf");
