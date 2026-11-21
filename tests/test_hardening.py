@@ -259,3 +259,25 @@ def test_shared_library_boundary_fault_returns_to_host_and_releases_gil(tmp_path
     assert lib.pa_error_code() == 70 and b"None" in lib.pa_error_message()
     lib.go(2.0)                                       # a second call would deadlock if the GIL leaked
     assert lib.pa_error_code() == 70
+
+
+def test_math_intrinsics_and_deep_call_chain(tmp_path):
+    r = run_pa(tmp_path, """
+        def l4(x) -> float:
+            return sqrt(x) + floor(1.9) + ceil(1.1)
+
+        def l3(x) -> float:
+            return l4(x) + sin(0.0) + cos(0.0) + tan(0.0) + atan(0.0) + atan2(0.0, 1.0)
+
+        def l2(x) -> float:
+            return l3(x) + log(exp(1.0))
+
+        def l1(x) -> float:
+            return l2(x)
+
+        def main() -> int:
+            print(l1(9.0), int(5000000000.5))
+            return 0
+    """)
+    assert r.stdout.strip() == "8.0 5000000000"
+

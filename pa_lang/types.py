@@ -272,7 +272,9 @@ INTRINSICS = {
     "alloc": "alloc(T, n) -> ptr[T]",
     "free": "free(p)",
 }
-BUILTINS_OK = {"range", "len", "min", "max", "abs", "int", "float", "bool", "print"}
+MATH_UNARY = ("sin", "cos", "tan", "sqrt", "atan", "exp", "log", "floor", "ceil")
+MATH_BINARY = ("atan2",)
+BUILTINS_OK = {"range", "len", "min", "max", "abs", "int", "float", "bool", "print", *MATH_UNARY, *MATH_BINARY}
 FORBIDDEN_CALLS = {
     "eval", "exec", "compile", "getattr", "setattr", "hasattr", "delattr",
     "globals", "locals", "vars", "type", "__import__", "isinstance",

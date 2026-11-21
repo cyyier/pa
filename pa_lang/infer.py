@@ -9,7 +9,7 @@ from .diagnostics import DiagnosticSink, struct_surgery
 from .paw import PawModule, find_paw, load_paw
 from .types import (
     BOOL, COPY_WARN_LIMIT, F32, F64, I32, I64, STACK_LIMIT, STR_VIEW, UNKNOWN, VOID,
-    BUILTINS_OK, INTRINSICS, DynList, FixedList, Ptr, Span, StackVec, StructT, Type, Vec,
+    BUILTINS_OK, INTRINSICS, MATH_UNARY, MATH_BINARY, DynList, FixedList, Ptr, Span, StackVec, StructT, Type, Vec,
     is_aggregate, is_numeric, parse_annotation, promote, resolve, SCALARS, StrOwned, is_str, U8, display, simple_display, Scalar,
 )
 
@@ -569,6 +569,8 @@ class FuncInferer:
             return F64
         if n == "bool":
             return BOOL
+        if n in MATH_UNARY or n in MATH_BINARY:
+            return F64
         if n in ("min", "max", "abs") and arg_ts:
             out = arg_ts[0]
             for t in arg_ts[1:]:
@@ -807,15 +809,13 @@ def initial_params(mod: ModuleInfo, info: FuncInfo) -> dict:
 
 def analyze(tree: ast.Module, sink: Optional[DiagnosticSink] = None, source: str = "",
             filename: str = "<mem>", search_dirs=None) -> ModuleInfo:
-    """Infer every function. Call-site types propagate over 3 passes; only the last reports."""
+    """Infer every function. Call-site types propagate to a fixed point; one final pass reports."""
     sink = sink or DiagnosticSink(source, filename)
     mod = collect_module(tree, sink, search_dirs)
     for fi in mod.funcs.values():
         if fi.node.returns is not None:
             fi.ret = parse_annotation(fi.node.returns, mod.structs)
-    for pass_no in range(3):
-        final = pass_no == 2
-        cur = sink if final else DiagnosticSink(source, filename)
+    def run_pass(cur: DiagnosticSink) -> None:
         for fi in mod.funcs.values():
             fi.params = initial_params(mod, fi)
             fi.locals, fi.raii_free_lines, fi.copy_lines = {}, [], {}
@@ -824,6 +824,14 @@ def analyze(tree: ast.Module, sink: Optional[DiagnosticSink] = None, source: str
             if declared is not None:
                 check_declared_return(fi, declared, cur)
                 fi.ret = declared
+
+    for _ in range(16):
+        prev = ({k: dict(v) for k, v in mod.callsites.items()}, {k: f.ret for k, f in mod.funcs.items()})
+        run_pass(DiagnosticSink(source, filename))
+        nxt = ({k: dict(v) for k, v in mod.callsites.items()}, {k: f.ret for k, f in mod.funcs.items()})
+        if nxt == prev:
+            break
+    run_pass(sink)
     check_temp_strings(mod, sink)
     for fi in mod.funcs.values():
         build_hints(fi)

@@ -13,7 +13,7 @@ from llvmlite import ir
 
 from .infer import FuncInferer, ModuleInfo, const_value, analyze
 from .paw import ELEM_CODES, PawFunc
-from .types import (BOOL, F32, F64, I32, I64, STR_VIEW, U8, UNKNOWN, VOID, FixedList, Ptr, Span, StackVec,
+from .types import (BOOL, F32, F64, I32, I64, MATH_BINARY, MATH_UNARY, STR_VIEW, U8, UNKNOWN, VOID, FixedList, Ptr, Span, StackVec,
                     StructT, Type, Vec, resolve, is_numeric, StrOwned, is_str, Scalar)
 
 PTR = ir.PointerType()
@@ -83,6 +83,8 @@ class ModuleGen:
         self.p_nl = d("pa_print_nl", VOIDT, [])
         self.memcpy = d("llvm.memcpy.p0.p0.i64", VOIDT, [PTR, PTR, I64T, I1])
         self.call_paw = d("pa_call_paw", VOIDT, [PTR, PTR, PTR, I32T, I32T, I32T, I32T, PTR])
+        self.math_fns = {n: d(n, F64T, [F64T]) for n in MATH_UNARY}
+        self.math_fns.update({n: d(n, F64T, [F64T, F64T]) for n in MATH_BINARY})
 
     # ---- type lowering ----------------------------------------------
     def lt(self, t: Type, node=None) -> ir.Type:
@@ -802,6 +804,12 @@ class FnGen:
         name = f.id
         if name in self.info.funcs:
             return self.local_call(e, name)
+        if name in self.mg.math_fns:
+            want = 2 if name in MATH_BINARY else 1
+            if len(e.args) != want or e.keywords:
+                self.err(f"{name}() expects {want} positional argument(s)", e)
+            args = [self.coerce(self.value(a), self.ty(a), F64) for a in e.args]
+            return self.b.call(self.mg.math_fns[name], args)
         h = getattr(self, "i_" + name, None)
         if h is None:
             self.err(f"call to unknown function '{name}'", e)
@@ -812,7 +820,7 @@ class FnGen:
         _, n, _ = self.seq_view(e.args[0])
         return n
 
-    def i_int(self, e): return self.coerce(self.value(e.args[0]), self.ty(e.args[0]), I32)
+    def i_int(self, e): return self.coerce(self.value(e.args[0]), self.ty(e.args[0]), I64)
     def i_float(self, e): return self.coerce(self.value(e.args[0]), self.ty(e.args[0]), F64)
     def i_bool(self, e): return self.cond(e.args[0])
     def i_mut(self, e): return self.value(e.args[0])
