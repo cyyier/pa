@@ -1,0 +1,42 @@
+# Crossing zone: point I/O, timing, and zero-copy PIL PNG rendering for KD-Tree demo.
+import os
+import time
+import numpy as np
+from PIL import Image
+
+
+def _data_dir() -> str:
+    return os.environ.get("PA_KD_DATA_DIR", os.path.dirname(os.path.abspath(__file__)))
+
+
+def load_px() -> Vec[float]:
+    return np.load(os.path.join(_data_dir(), "px.npy")).astype(np.float64, copy=False)
+
+
+def load_py() -> Vec[float]:
+    return np.load(os.path.join(_data_dir(), "py.npy")).astype(np.float64, copy=False)
+
+
+def load_qx() -> Vec[float]:
+    return np.load(os.path.join(_data_dir(), "qx.npy")).astype(np.float64, copy=False)
+
+
+def load_qy() -> Vec[float]:
+    return np.load(os.path.join(_data_dir(), "qy.npy")).astype(np.float64, copy=False)
+
+
+def now_sec() -> float:
+    return float(time.perf_counter())
+
+
+def save_hits(indices: span[int], dists2: span[float]) -> void:
+    d = _data_dir()
+    np.save(os.path.join(d, "pa_idx.npy"), np.frombuffer(indices, dtype=np.int64))
+    np.save(os.path.join(d, "pa_d2.npy"), np.frombuffer(dists2, dtype=np.float64))
+
+
+def save_png(rgb: span[u8], width: int, height: int) -> void:
+    raw = bytes(memoryview(rgb))
+    img = Image.frombytes("RGB", (int(width), int(height)), raw)
+    out_path = os.environ.get("PA_KD_PNG", os.path.join(_data_dir(), "kdtree_voronoi.png"))
+    img.save(out_path)
