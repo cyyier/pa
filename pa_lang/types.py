@@ -112,6 +112,19 @@ class Vec(Type):
 
 
 @dataclass(frozen=True)
+class StrOwned(Vec):
+    """Owned heap string produced by concatenation: {u8*, len, cap}, RAII like Vec<u8>."""
+    elem: Type = U8
+
+    def fmt(self) -> str:
+        return "String"
+
+
+def is_str(t: Type) -> bool:
+    return t == STR_VIEW or isinstance(t, StrOwned)
+
+
+@dataclass(frozen=True)
 class Ptr(Type):
     elem: Type
     size: int = 8

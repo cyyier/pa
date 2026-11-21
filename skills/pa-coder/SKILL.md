@@ -13,6 +13,16 @@ description: Write new Pa (.pa) projects from scratch with Host-First architectu
 5. **Python ecosystem** – create `<tool>.paw`: standard Python, any imports, but every public function has a locked signature, e.g. `def f(arr: span[f64], k: f64) -> f64:`. Boundary types: `i32 i64 u8 f32 f64 bool str_view span[T] list[T,N] Vec[T]`; return scalar | `Vec[T]` | `void`. Call it from `.pa` as `import tool; x = tool.f(arr)`. **Never call a `.paw` function inside a loop** (`PA_E002`): pack the batch first.
 6. **Gate** – run `pac check --ai-diagnostic <dir>` and apply every ticket's `repair_plan.suggested_patches` until it is green; then `pac build main.pa -o app`.
 
+## Hard rules for strings and `mut()` (enforced by the compiler)
+1. **No string concatenation inside call arguments** (`PA_E072`; also flagged: a String-returning call used as an operand, comparison, index or `s += a + b`). A concat used as a temporary (`f("a" + b)`, `tool.g(x + y)`) is never freed. Always bind it to a local first so RAII owns and frees it:
+   ```python
+   tmp = "a" + b      # owned String, freed automatically at function exit
+   f(tmp)
+   ```
+2. **Empty lists + `mut()`: keep it to one level** (`PA_E011` names the callee it was forwarded to). `x = []` filled only through `mut(x)` gets its element type from the callee's direct `append`. If the list must be passed through several functions via `mut()`, either give it an element type at the top level first (`x = []; x.append(first_value)` or `x = [0.0] * N`) or fill it in a single-level `mut()` call. Never hand an untyped empty list down a chain of `mut()` forwards.
+3. **No string slicing** (`PA_E071`). Use `s[i]` (a `u8`), `for ch in s`, `span` over a char array, or copy bytes with an explicit loop.
+4. **A `.paw` function must not return a string** (`PA_E082`). Return the characters as `Vec[u8]` (a char/byte array) and let the `.pa` side own it; encode on the `.paw` side with e.g. `np.frombuffer(s.encode("utf-8"), dtype=np.uint8)` or `list(s.encode("utf-8"))`. Passing strings *into* a `.paw` as `str_view` is fine.
+
 ## Debugging a boundary fault
 `pa_boundary_fault.json` has `direction`, `worker`, `violation`, `in_payload_snapshot`. Replay the snapshot directly against the `.paw` function: valid input + bad output => the `.paw` is wrong; correct worker output but wrong final state => the `.pa` core is wrong.
 

@@ -11,6 +11,7 @@ dependencies = ["llvmlite", "pygls"]
 
 [project.optional-dependencies]
 dev = ["pytest"]
+web = ["fastapi", "httpx", "uvicorn"]
 
 [project.scripts]
 pac = "pa_lang.cli:main"

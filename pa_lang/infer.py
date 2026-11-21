@@ -10,7 +10,7 @@ from .paw import PawModule, find_paw, load_paw
 from .types import (
     BOOL, COPY_WARN_LIMIT, F32, F64, I32, I64, STACK_LIMIT, STR_VIEW, UNKNOWN, VOID,
     BUILTINS_OK, INTRINSICS, DynList, FixedList, Ptr, Span, StackVec, StructT, Type, Vec,
-    is_aggregate, is_numeric, parse_annotation, promote, resolve, SCALARS,
+    is_aggregate, is_numeric, parse_annotation, promote, resolve, SCALARS, StrOwned, is_str, U8,
 )
 
 ROOT = "<root>"
@@ -47,6 +47,7 @@ class ModuleInfo:
     callsites: dict = field(default_factory=dict)    # func -> {param_name: Type}
     paw: dict = field(default_factory=dict)          # import alias -> PawModule
     expr_types: dict = field(default_factory=dict)   # id(ast node) -> Type (final pass)
+    probing: set = field(default_factory=set)
 
 
 def _decorators(node) -> set:
@@ -83,6 +84,8 @@ def literal_int_type(v: int) -> Type:
 def widen(old: Type, new: Type) -> Type:
     if old == new or isinstance(old, DynList) or new == UNKNOWN:
         return old
+    if is_str(old) and is_str(new):
+        return old if isinstance(old, StrOwned) else new
     if old == UNKNOWN:
         return new
     if is_numeric(old) and is_numeric(new):
@@ -100,7 +103,7 @@ def paw_arg_compatible(pt: Type, at: Type) -> bool:
     if isinstance(pt, Span):
         return isinstance(at, (FixedList, Vec, StackVec, Span)) and at.elem == pt.elem
     if pt == STR_VIEW:
-        return at == STR_VIEW
+        return is_str(at)
     return is_numeric(at) or at == BOOL
 
 
@@ -116,6 +119,7 @@ class FuncInferer:
         self.returns: list = []           # (node, Type)
         self.span_locals: dict = {}       # var -> base name (local)
         self.allocs: dict = {}            # var -> line
+        self.mut_forwarded: dict = {}     # list var -> callee it was only mut()-forwarded to
 
     # ---- driver ------------------------------------------------------
     def run(self) -> None:
@@ -163,7 +167,7 @@ class FuncInferer:
             vt = I64
         else:
             lt = resolve(self.expr(it))
-            vt = getattr(lt, "elem", UNKNOWN)
+            vt = U8 if lt == STR_VIEW else getattr(lt, "elem", UNKNOWN)
         if isinstance(s.target, ast.Name):
             self.bind(s.target.id, vt, s.lineno)
         self.block(s.body)
@@ -177,6 +181,8 @@ class FuncInferer:
             self.info.locals[name] = LocalInfo(name, t, line, st)
         else:
             self.info.locals[name].type = t
+            if isinstance(t, StrOwned):
+                self.info.locals[name].storage = "heap"
 
     def assign(self, s: ast.Assign) -> None:
         target = s.targets[0]
@@ -227,6 +233,12 @@ class FuncInferer:
 
     def aug_assign(self, s: ast.AugAssign) -> None:
         rt = self.expr(s.value)
+        if isinstance(s.target, ast.Name) and isinstance(s.op, ast.Add) and is_str(self.env.get(s.target.id, UNKNOWN)) \
+                and is_str(resolve(rt)):
+            self.env[s.target.id] = StrOwned()
+            self.info.locals[s.target.id].type = StrOwned()
+            self.info.locals[s.target.id].storage = "heap"
+            return
         if isinstance(s.target, ast.Name) and s.target.id in self.env:
             self.env[s.target.id] = widen(self.env[s.target.id], rt)
             self.info.locals[s.target.id].type = self.env[s.target.id]
@@ -285,6 +297,8 @@ class FuncInferer:
         if isinstance(e.op, ast.Mult) and isinstance(e.left, ast.List):
             return self.repeat_list(e)
         a, b = self.expr(e.left), self.expr(e.right)
+        if isinstance(e.op, ast.Add) and is_str(resolve(a)) and is_str(resolve(b)):
+            return StrOwned()
         if isinstance(e.op, ast.Add) and (isinstance(resolve(a), (FixedList, StackVec, Vec))
                                           or isinstance(resolve(b), (FixedList, StackVec, Vec))
                                           or isinstance(e.left, ast.List) or isinstance(e.right, ast.List)):
@@ -372,13 +386,23 @@ class FuncInferer:
     def e_Subscript(self, e) -> Type:
         bt = resolve(self.expr(e.value))
         if isinstance(e.slice, ast.Slice):
-            self.sink.report("PA_E071", e, "slice 'arr[a:b]' creates an implicit heap copy",
+            is_s = is_str(bt)
+            self.sink.report("PA_E071", e, "string slicing 'S[a:b]' is not supported (it would allocate a new string)" if is_s
+                             else "slice 'arr[a:b]' creates an implicit heap copy",
                              inferred_context={"base": bt.fmt()},
                              causal_chain=["Python slicing allocates a new list"],
-                             patches=[{"line": e.lineno, "replacement": "span(arr, start, len)"}])
+                             patches=[{"line": e.lineno, "replacement":
+                                       "index s[i] (u8) / for ch in s, or copy bytes with an explicit loop" if is_s
+                                       else "span(arr, start, len)"}])
             return UNKNOWN
+        if isinstance(e.slice, ast.Tuple):          # m[i, j] == m[i][j]
+            t = bt
+            for ix in e.slice.elts:
+                self.expr(ix)
+                t = resolve(getattr(t, "elem", UNKNOWN))
+            return t
         self.expr(e.slice)
-        return getattr(bt, "elem", UNKNOWN)
+        return U8 if bt == STR_VIEW else getattr(bt, "elem", UNKNOWN)
 
     def e_Attribute(self, e) -> Type:
         bt = resolve(self.expr(e.value))
@@ -391,6 +415,8 @@ class FuncInferer:
             if isinstance(e.func.value, ast.Name) and e.func.value.id in self.mod.paw:
                 return self.paw_call(e)
             return self.method_call(e)
+        if isinstance(e.func, ast.Name) and e.func.id in self.mod.funcs:
+            self.infer_mut_elems(e)
         arg_ts = [self.expr(a) for a in e.args]
         kw_ts = {k.arg: self.expr(k.value) for k in e.keywords}
         if not isinstance(e.func, ast.Name):
@@ -401,6 +427,39 @@ class FuncInferer:
         if n in self.mod.funcs:
             return self.local_call(n, arg_ts, kw_ts)
         return self.builtin_call(n, e, arg_ts)
+
+    def infer_mut_elems(self, e: ast.Call) -> None:
+        """`x = []` passed only as mut(x) to a callee that appends: take the element type from the callee."""
+        callee = self.mod.funcs[e.func.id]
+        params = [a.arg for a in callee.node.args.args]
+        for p, a in list(zip(params, e.args)) + [(k.arg, k.value) for k in e.keywords]:
+            if not (isinstance(a, ast.Call) and isinstance(a.func, ast.Name) and a.func.id == "mut"
+                    and a.args and isinstance(a.args[0], ast.Name)):
+                continue
+            dl = self.dyn.get(a.args[0].id)
+            if dl is not None and dl.elem is None:
+                el = self.probe_append(callee, p)
+                if el is not None and el != UNKNOWN:
+                    dl.elem = el
+                else:
+                    self.mut_forwarded.setdefault(a.args[0].id, callee.name)
+
+    def probe_append(self, callee: FuncInfo, pname: str) -> Optional[Type]:
+        if callee.name in self.mod.probing:
+            return None
+        self.mod.probing.add(callee.name)
+        saved = dict(self.mod.expr_types)
+        try:
+            tmp = FuncInfo(callee.name, callee.node, callee.exported)
+            tmp.params = dict(initial_params(self.mod, callee))
+            probe = DynList()
+            tmp.params[pname] = probe
+            FuncInferer(self.mod, callee.node, tmp, DiagnosticSink()).run()
+            return probe.elem
+        finally:
+            self.mod.expr_types.clear()
+            self.mod.expr_types.update(saved)
+            self.mod.probing.discard(callee.name)
 
     def paw_call(self, e: ast.Call) -> Type:
         pm: PawModule = self.mod.paw[e.func.value.id]
@@ -482,7 +541,12 @@ class FuncInferer:
     def finalize_lists(self) -> None:
         for name, dl in self.dyn.items():
             if dl.elem is None:
-                self.sink.report("PA_E011", self.fn, f"cannot infer element type of empty list '{name}'",
+                via = self.mut_forwarded.get(name)
+                summary = f"cannot infer element type of empty list '{name}'"
+                if via:
+                    summary += (f": it is only passed via mut() to '{via}', which has no direct append() on that "
+                                "parameter (multi-level mut() forwarding is not followed)")
+                self.sink.report("PA_E011", self.fn, summary,
                                  line=dl.line,
                                  inferred_context={"variable": name},
                                  causal_chain=[f"'{name} = []' at line {dl.line}",
@@ -690,9 +754,41 @@ def analyze(tree: ast.Module, sink: Optional[DiagnosticSink] = None, source: str
             FuncInferer(mod, fi.node, fi, cur).run()
             if declared is not None:
                 fi.ret = declared
+    check_temp_strings(mod, sink)
     for fi in mod.funcs.values():
         build_hints(fi)
     return mod
+
+
+def check_temp_strings(mod: ModuleInfo, sink: DiagnosticSink) -> None:
+    """PA_E072: a fresh String (concat / call result) may only be assigned, returned, or fused into a concat."""
+    for fi in mod.funcs.values():
+        parents = {}
+        for n in ast.walk(fi.node):
+            for ch in ast.iter_child_nodes(n):
+                parents[id(ch)] = n
+        for n in ast.walk(fi.node):
+            if not isinstance(n, (ast.BinOp, ast.Call)) or (isinstance(n, ast.BinOp) and not isinstance(n.op, ast.Add)):
+                continue
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "mut":
+                continue
+            if not isinstance(resolve(mod.expr_types.get(id(n), UNKNOWN)), StrOwned):
+                continue
+            par = parents.get(id(n))
+            fused = isinstance(par, ast.BinOp) and isinstance(par.op, ast.Add) and isinstance(n, ast.BinOp) \
+                and isinstance(resolve(mod.expr_types.get(id(par), UNKNOWN)), StrOwned)
+            ok = fused or isinstance(par, ast.Return) or (isinstance(par, ast.Assign) and par.value is n
+                                                           and all(isinstance(t, ast.Name) for t in par.targets))
+            if ok:
+                continue
+            what = "string concatenation" if isinstance(n, ast.BinOp) else f"call '{ast.unparse(n.func)}' returning a String"
+            sink.report("PA_E072", n, f"temporary String from {what} is never freed here",
+                        inferred_context={"expression": ast.unparse(n), "type": "String"},
+                        causal_chain=["the expression allocates an owned heap String",
+                                      "it is used as an operand/argument, not bound to a local",
+                                      "RAII only frees locals, so the buffer would leak"],
+                        patches=[{"line": n.lineno, "action": "bind_to_local",
+                                  "replacement": f"tmp = {ast.unparse(n)}\n# then use `tmp` here"}])
 
 
 def build_hints(fi: FuncInfo) -> None:

@@ -72,6 +72,15 @@ def parse_paw(source: str, filename: str, sink: Optional[DiagnosticSink] = None)
                         inferred_context={"function": fn.name},
                         patches=[{"line": fn.lineno, "replacement": f"def {fn.name}(a: f64) -> f64:"}])
             continue
+        if isinstance(fn.returns, ast.Name) and fn.returns.id in ("str", "str_view", "bytes", "bytes_view"):
+            sink.report("PA_E082", fn, f"'{fn.name}' must not return a string; return the characters as Vec[u8]",
+                        inferred_context={"function": fn.name, "ret": fn.returns.id},
+                        causal_chain=["a returned string would need an owner on the .pa side",
+                                      "strings cross the boundary inbound only (str_view)"],
+                        patches=[{"line": fn.lineno, "replacement": f"def {fn.name}(...) -> Vec[u8]:"},
+                                 {"line": fn.lineno, "action": "encode",
+                                  "replacement": "return np.frombuffer(s.encode('utf-8'), dtype=np.uint8)"}])
+            continue
         ptypes = [(p.arg, parse_annotation(p.annotation, {})) for p in params]
         ret = parse_annotation(fn.returns, {})
         bad = [n for n, t in ptypes if not boundary_param_ok(t)]

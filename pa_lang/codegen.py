@@ -14,7 +14,7 @@ from llvmlite import ir
 from .infer import FuncInferer, ModuleInfo, const_value, analyze
 from .paw import ELEM_CODES, PawFunc
 from .types import (BOOL, F32, F64, I32, I64, STR_VIEW, U8, UNKNOWN, VOID, FixedList, Ptr, Span, StackVec,
-                    StructT, Type, Vec, resolve, is_numeric)
+                    StructT, Type, Vec, resolve, is_numeric, StrOwned, is_str)
 
 PTR = ir.PointerType()
 I1, I8, I32T, I64T = ir.IntType(1), ir.IntType(8), ir.IntType(32), ir.IntType(64)
@@ -71,6 +71,7 @@ class ModuleGen:
         self.realloc = d("realloc", PTR, [PTR, I64T])
         self.free = d("free", VOIDT, [PTR])
         self.printf = d("printf", I32T, [PTR], True)
+        self.bcmp = d("bcmp", I32T, [PTR, PTR, I64T])
         self.memcpy = d("llvm.memcpy.p0.p0.i64", VOIDT, [PTR, PTR, I64T, I1])
         self.call_paw = d("pa_call_paw", VOIDT, [PTR, PTR, PTR, I32T, I32T, I32T, I32T, PTR])
 
@@ -173,6 +174,8 @@ class FnGen:
         raise CodegenError(msg, node)
 
     def ty(self, node) -> Type:
+        if isinstance(node, ast.Name) and node.id in self.slots:
+            return resolve(self.slots[node.id][1])      # final local type wins over per-node snapshot
         t = self.info.expr_types.get(id(node))
         if t is None:
             self.err(f"no inferred type for expression '{ast.unparse(node)}'", node)
@@ -238,7 +241,8 @@ class FnGen:
             self.store_vec_header(self.entry_b, slot, buf, 0, cap)
 
     def store_vec_header(self, b, slot, ptr, n, cap) -> None:
-        for i, v in enumerate((ptr, ci(n, I64T), ci(cap, I64T))):
+        vals = [x if isinstance(x, ir.Value) else ci(x, I64T) for x in (ptr, n, cap)]
+        for i, v in enumerate(vals):
             b.store(v, b.gep(slot, [ci(0), ci(i)], inbounds=True, source_etype=VEC))
 
     # ---- statements --------------------------------------------------
@@ -314,9 +318,12 @@ class FnGen:
             v = self.coerce(self.value(val), self.ty(val), t)
             self.b.store(v, ptr)
             return
+        if isinstance(t, StrOwned) and self.ty(val) == STR_VIEW:
+            return self.string_from_view(ptr, self.value(val))
         src = self.addr(val)
         if isinstance(t, (Vec, StackVec)):
-            fresh = isinstance(val, ast.Call) and not (isinstance(val.func, ast.Name) and val.func.id == "mut")
+            fresh = (isinstance(val, ast.Call) and not (isinstance(val.func, ast.Name) and val.func.id == "mut")) \
+                or (isinstance(val, ast.BinOp) and isinstance(t, StrOwned))
             if isinstance(t, Vec) and fresh and fresh_ok:
                 self.free_vec(ptr)
                 self.memcpy(ptr, src, 24)
@@ -324,6 +331,46 @@ class FnGen:
                 self.vec_assign(ptr, t, src, resolve(self.ty(val)))
         else:
             self.memcpy(ptr, src, t.size)
+
+    def string_from_view(self, slot, view) -> None:
+        """Copy a str_view into an owned String slot (frees the previous buffer)."""
+        b = self.b
+        n, sp = b.extract_value(view, 1), b.extract_value(view, 0)
+        self.free_vec(slot)
+        dp = b.call(self.mg.malloc, [b.add(n, ci(1, I64T))])
+        self.memcpy(dp, sp, n)
+        self.store_vec_header(b, slot, dp, n, n)
+
+    def view_of(self, e):
+        """str_view value of any string-like expression (String is viewed in place)."""
+        t = self.ty(e)
+        if isinstance(t, StrOwned):
+            return self.view_from_header(self.addr(e))
+        if t == STR_VIEW:
+            return self.value(e)
+        self.err(f"'{ast.unparse(e)}' is not a string", e)
+
+    def view_from_header(self, h):
+        b = self.b
+        p = b.load(b.gep(h, [ci(0), ci(0)], inbounds=True, source_etype=VEC), typ=PTR)
+        n = b.load(b.gep(h, [ci(0), ci(1)], inbounds=True, source_etype=VEC), typ=I64T)
+        return b.insert_value(b.insert_value(ir.Constant(VIEW, ir.Undefined), p, 0), n, 1)
+
+    def concat_views(self, views: list):
+        """Allocate one buffer for all views (no intermediate temporaries) -> fresh String header address."""
+        b = self.b
+        lens = [b.extract_value(v, 1) for v in views]
+        total = lens[0]
+        for ln in lens[1:]:
+            total = b.add(total, ln)
+        p = b.call(self.mg.malloc, [b.add(total, ci(1, I64T))])
+        off = ci(0, I64T)
+        for v, ln in zip(views, lens):
+            self.memcpy(b.gep(p, [off], inbounds=True, source_etype=I8), b.extract_value(v, 0), ln)
+            off = b.add(off, ln)
+        tmp = self.alloca(VEC, "str")
+        self.store_vec_header(b, tmp, p, total, total)
+        return tmp
 
     def vec_assign(self, dst, dt, src, st) -> None:
         """Deep copy a Vec/StackVec header + elements into dst (value semantics)."""
@@ -342,6 +389,13 @@ class FnGen:
         b.store(n, b.gep(dst, [ci(0), ci(1)], inbounds=True, source_etype=VEC))
 
     def s_AugAssign(self, s) -> None:
+        if isinstance(s.target, ast.Name) and isinstance(self.slots[s.target.id][1], StrOwned) \
+                and isinstance(s.op, ast.Add):
+            slot = self.slots[s.target.id][0]
+            tmp = self.concat_views([self.view_from_header(slot), self.view_of(s.value)])
+            self.free_vec(slot)
+            self.memcpy(slot, tmp, 24)
+            return
         ptr, t = self.lvalue(s.target)
         cur = self.b.load(ptr, typ=self.lt(t))
         rt = self.ty(s.value)
@@ -439,7 +493,7 @@ class FnGen:
         self.loop(s, lambda: self.b.icmp_signed(op, self.b.load(slot, typ=lt), stop), lambda: None,
                   lambda: self.b.store(self.b.add(self.b.load(slot, typ=lt), step), slot))
 
-    def loop(self, s, cond_fn, prologue, step_fn) -> None:
+    def loop(self, s, cond_fn, prologue, step_fn, body=None) -> None:
         cb, bb, sb, eb = (self.fn.append_basic_block(n) for n in ("fcond", "fbody", "fstep", "fend"))
         self.b.branch(cb)
         self.b.position_at_end(cb)
@@ -447,7 +501,7 @@ class FnGen:
         self.b.position_at_end(bb)
         prologue()
         self.loops.append((sb, eb))
-        self.block(s.body)
+        self.block(s.body if body is None else body)
         self.loops.pop()
         if not self.terminated():
             self.b.branch(sb)
@@ -597,6 +651,8 @@ class FnGen:
     def compare_one(self, op, a, bnode, e):
         from .types import promote
         at, bt = self.ty(a), self.ty(bnode)
+        if is_str(at) and is_str(bt) and isinstance(op, (ast.Eq, ast.NotEq)):
+            return self.str_equal(a, bnode, isinstance(op, ast.NotEq))
         t = promote(at, bt)
         l, r = self.coerce(self.value(a), at, t), self.coerce(self.value(bnode), bt, t)
         name = {ast.Lt: "<", ast.LtE: "<=", ast.Gt: ">", ast.GtE: ">=", ast.Eq: "==", ast.NotEq: "!="}.get(type(op))
@@ -605,6 +661,16 @@ class FnGen:
         if t in (F32, F64):
             return self.b.fcmp_ordered(name, l, r) if name != "!=" else self.b.fcmp_unordered("!=", l, r)
         return self.b.icmp_signed(name, l, r)
+
+    def str_equal(self, a, bnode, negate: bool):
+        b = self.b
+        va, vb = self.view_of(a), self.view_of(bnode)
+        la, lb = b.extract_value(va, 1), b.extract_value(vb, 1)
+        same_len = b.icmp_signed("==", la, lb)
+        n = b.select(same_len, la, ci(0, I64T))
+        r = b.call(self.mg.bcmp, [b.extract_value(va, 0), b.extract_value(vb, 0), n])
+        eq = b.and_(same_len, b.icmp_signed("==", r, ci(0)))
+        return b.xor(eq, ir.Constant(I1, 1)) if negate else eq
 
     def v_BoolOp(self, e):
         is_and = isinstance(e.op, ast.And)
@@ -716,8 +782,9 @@ class FnGen:
     def i_print(self, e):
         fmts, args = [], []
         for a in e.args:
-            t, v = self.ty(a), self.value(a)
-            if t == STR_VIEW:
+            t = self.ty(a)
+            v = self.view_of(a) if is_str(t) else self.value(a)
+            if is_str(t):
                 fmts.append("%.*s")
                 args += [self.b.trunc(self.b.extract_value(v, 1), I32T), self.b.extract_value(v, 0)]
             elif t == BOOL:
@@ -779,7 +846,7 @@ class FnGen:
         fld = lambda i: b.gep(p, [ci(0), ci(i)], inbounds=True, source_etype=PAARG)
         at = self.ty(a)
         if pt == STR_VIEW:
-            v = self.value(a)
+            v = self.view_of(a)
             tag, elem, ptr, n = TAG_STR, 0, b.extract_value(v, 0), b.extract_value(v, 1)
             vals = (tag, elem, 0, 0.0, ptr, n)
         elif isinstance(pt, (FixedList, Vec, Span)):
@@ -867,7 +934,14 @@ class FnGen:
             self.store_to(self.b.gep(tmp, [ci(0), ci(i)], inbounds=True, source_etype=self.lt(t)), t.elem, x)
         return tmp
 
+    def flatten_concat(self, n) -> list:
+        if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Add) and isinstance(self.ty(n), StrOwned):
+            return self.flatten_concat(n.left) + self.flatten_concat(n.right)
+        return [n]
+
     def a_BinOp(self, e):
+        if isinstance(self.ty(e), StrOwned) and isinstance(e.op, ast.Add):
+            return self.concat_views([self.view_of(x) for x in self.flatten_concat(e)])
         if not (isinstance(e.op, ast.Mult) and isinstance(e.left, ast.List)):
             self.err("aggregate arithmetic is not supported", e)
         t = self.ty(e)
@@ -875,11 +949,23 @@ class FnGen:
             self.err("repeated list exceeds the 64KB stack limit", e)
         tmp = self.alloca(self.lt(t, e), "rep")
         k = len(e.left.elts)
-        for rep in range(t.n // k):
-            for j, x in enumerate(e.left.elts):
-                p = self.b.gep(tmp, [ci(0), ci(rep * k + j)], inbounds=True, source_etype=self.lt(t))
-                self.store_to(p, t.elem, x)
+        reps = t.n // k
+        if reps * k <= 16:
+            for rep in range(reps):
+                self.fill_repeat(tmp, t, e, ci(rep, I64T), k)
+            return tmp
+        i = self.alloca(I64T, "rep.i")
+        self.b.store(ci(0, I64T), i)
+        self.loop(ast.Pass(), lambda: self.b.icmp_signed("<", self.b.load(i, typ=I64T), ci(reps, I64T)),
+                  lambda: self.fill_repeat(tmp, t, e, self.b.load(i, typ=I64T), k),
+                  lambda: self.b.store(self.b.add(self.b.load(i, typ=I64T), ci(1, I64T)), i), body=[])
         return tmp
+
+    def fill_repeat(self, tmp, t, e, rep, k) -> None:
+        for j, x in enumerate(e.left.elts):
+            idx = self.b.add(self.b.mul(rep, ci(k, I64T)), ci(j, I64T))
+            p = self.b.gep(tmp, [ci(0), idx], inbounds=True, source_etype=self.lt(t))
+            self.store_to(p, t.elem, x)
 
     def addr_of(self, e):
         """Address of a Subscript / Attribute location."""
@@ -889,11 +975,26 @@ class FnGen:
                 self.err("attribute access requires a @struct", e)
             idx = [n for n, _ in bt.fields].index(e.attr)
             return self.b.gep(self.addr(e.value), [ci(0), ci(idx)], inbounds=True, source_etype=self.lt(bt))
-        if isinstance(e.slice, (ast.Slice, ast.Tuple)):
-            self.err("only simple integer indexing is supported", e)
+        if isinstance(e.slice, ast.Slice):
+            self.err("slices are not supported (use span(arr, start, len))", e)
         ptr, _, elem = self.seq_view(e.value)
-        idx = self.coerce(self.value(e.slice), self.ty(e.slice), I64)
-        return self.b.gep(ptr, [idx], inbounds=True, source_etype=self.lt(elem))
+        idxs = e.slice.elts if isinstance(e.slice, ast.Tuple) else [e.slice]
+        ptr = self.b.gep(ptr, [self.index_value(idxs[0])], inbounds=True, source_etype=self.lt(elem))
+        for ix in idxs[1:]:                     # m[i, j]: descend one dimension per extra index
+            ptr, elem = self.index_into(ptr, elem, ix, e)
+        return ptr
+
+    def index_value(self, ix):
+        return self.coerce(self.value(ix), self.ty(ix), I64)
+
+    def index_into(self, ptr, cur: Type, ix, node):
+        b = self.b
+        if isinstance(cur, FixedList):
+            return b.gep(ptr, [self.index_value(ix)], inbounds=True, source_etype=self.lt(cur.elem)), cur.elem
+        if isinstance(cur, (Vec, StackVec)):
+            data = b.load(b.gep(ptr, [ci(0), ci(0)], inbounds=True, source_etype=VEC), typ=PTR)
+            return b.gep(data, [self.index_value(ix)], inbounds=True, source_etype=self.lt(cur.elem)), cur.elem
+        self.err(f"cannot index into {cur.fmt()} with an extra subscript", node)
 
     def seq_view(self, e):
         """(data pointer, length i64, element Type) of a list-like expression."""
@@ -906,9 +1007,9 @@ class FnGen:
             p = b.load(b.gep(base, [ci(0), ci(0)], inbounds=True, source_etype=VEC), typ=PTR)
             n = b.load(b.gep(base, [ci(0), ci(1)], inbounds=True, source_etype=VEC), typ=I64T)
             return p, n, t.elem
-        if isinstance(t, Span):
+        if isinstance(t, Span) or t == STR_VIEW:
             v = self.value(e)
-            return b.extract_value(v, 0), b.extract_value(v, 1), t.elem
+            return b.extract_value(v, 0), b.extract_value(v, 1), (U8 if t == STR_VIEW else t.elem)
         if isinstance(t, Ptr):
             return self.value(e), ci(0, I64T), t.elem
         self.err(f"'{ast.unparse(e)}' of type {t.fmt()} is not list-like", e)
