@@ -1,0 +1,34 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Pa",
+  "scopeName": "source.pa",
+  "patterns": [
+    { "include": "#pa-decorators" },
+    { "include": "#pa-intrinsics" },
+    { "include": "#pa-generic-types" },
+    { "include": "#pa-primitive-types" },
+    { "include": "source.python" }
+  ],
+  "repository": {
+    "pa-decorators": {
+      "match": "^\\s*(@)(struct|export|allow_nan)\\b",
+      "name": "meta.decorator.pa",
+      "captures": {
+        "1": { "name": "punctuation.decorator.pa" },
+        "2": { "name": "entity.name.function.decorator.pa" }
+      }
+    },
+    "pa-intrinsics": {
+      "match": "\\b(mut|span|copy|alloc|free|py_call)\\b(?=\\s*\\()",
+      "name": "support.function.intrinsic.pa"
+    },
+    "pa-generic-types": {
+      "match": "\\b(Vec|ptr|span)\\b(?=\\s*\\[)",
+      "name": "support.type.generic.pa"
+    },
+    "pa-primitive-types": {
+      "match": "\\b(i32|i64|u8|f32|f64|str_view|bytes_view|void)\\b",
+      "name": "support.type.primitive.pa"
+    }
+  }
+}

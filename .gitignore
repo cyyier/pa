@@ -6,3 +6,5 @@ __pycache__/
 *.so
 examples/benchmark/bench_pa
 pa_boundary_fault.json
+vscode-pa/node_modules/
+vscode-pa/*.vsix

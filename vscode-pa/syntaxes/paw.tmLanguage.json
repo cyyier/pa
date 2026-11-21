@@ -1,0 +1,5 @@
+{
+  "name": "Pa Worker",
+  "scopeName": "source.paw",
+  "patterns": [{ "include": "source.pa" }]
+}

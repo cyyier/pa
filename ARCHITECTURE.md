@@ -78,3 +78,10 @@ Pa Language (.pa) — 完整架构与工程规范Slogan: Inspired by Python, 100
 | `pa_boundary_fault.json` | 含 `"mode": "dev"` | 含 `"mode": "prod"` |
 
 实现：`validator.check_source(mode=)`、`paw.lint_function`、`build.compile_pa(mode=)`；桥接层以 `-DPA_DEEP_CHECKS`、`-DPA_SNAP_LIMIT`、`-DPA_MODE` 在编译 `runtime_bridge.c` 时定型。`@allow_nan` 在两种模式下语义相同。
+
+### 修订 R7：VS Code 本地插件（`vscode-pa/`）
+- 注册语言 ID `pa`（`.pa`）与 `paw`（`.paw`）；TextMate 语法继承链 `source.paw → source.pa → source.python`。
+- 专属配色：编译器原语 `mut/span/copy/alloc/free/py_call`、装饰器 `@struct/@export/@allow_nan`、类型 `i32 i64 u8 f32 f64 str_view bytes_view void Vec[] ptr[] span[]`。
+- 客户端 `src/extension.js` 仅负责启动 `pac lsp`（自动优先 `<workspace>/.venv/bin/pac`，可用 `pa.pacPath` 覆盖）并提供重启 / dev·prod 构建 / `--ai-diagnostic` 检查命令；行内类型提示、悬浮内存审计卡片与诊断均由服务端提供。
+- 打包：`npm install && npx @vscode/vsce package --skip-license --allow-missing-repository` 得到 `pa-lang-0.1.0.vsix`。
+- 测试：`npm test`（vscode-textmate 实际分词）与 `tests/test_lsp_stdio.py`（真实 LSP JSON-RPC 往返：initialize → didOpen → inlayHint → hover → didChange 诊断 → shutdown）。
