@@ -122,6 +122,8 @@ def widen(old: Type, new: Type) -> Type:
         return old if isinstance(old, StrOwned) else new
     if old == UNKNOWN:
         return new
+    if isinstance(old, (Span, Vec, Ptr)) and type(old) is type(new) and old.elem == UNKNOWN:
+        return new
     if is_numeric(old) and is_numeric(new):
         return promote(old, new)
     return old

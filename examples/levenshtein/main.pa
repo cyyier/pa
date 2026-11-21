@@ -1,0 +1,132 @@
+import io_bridge
+
+
+# Computes Levenshtein distance between byte spans a and b using caller-owned rolling rows
+def lev_rolling(a, b, prev, curr) -> int:
+    la = len(a)
+    lb = len(b)
+    if la == 0:
+        return lb
+    if lb == 0:
+        return la
+    for j in range(lb + 1):
+        prev[j] = j
+    for i in range(1, la + 1):
+        curr[0] = i
+        ca = a[i - 1]
+        for j in range(1, lb + 1):
+            cost = 0 if ca == b[j - 1] else 1
+            curr[j] = min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
+        for j in range(lb + 1):
+            prev[j] = curr[j]
+    return prev[lb]
+
+
+# Computes one OSA DP cell with optional adjacent transposition check (keeps nesting <= 3)
+def osa_cell(a, b, dp, stride, i, j) -> int:
+    ca = a[i - 1]
+    cb = b[j - 1]
+    cost = 0 if ca == cb else 1
+    best = min(
+        dp[(i - 1) * stride + j] + 1,
+        dp[i * stride + (j - 1)] + 1,
+        dp[(i - 1) * stride + (j - 1)] + cost,
+    )
+    if i > 1 and j > 1 and ca == b[j - 2] and a[i - 2] == cb:
+        tr = dp[(i - 2) * stride + (j - 2)] + 1
+        return min(best, tr)
+    return best
+
+
+# Computes Damerau-Levenshtein (OSA) distance via flattened 2D DP table dp[i * stride + j]
+def osa_flat2d(a, b, dp) -> int:
+    la = len(a)
+    lb = len(b)
+    if la == 0:
+        return lb
+    if lb == 0:
+        return la
+    stride = lb + 1
+    for j in range(stride):
+        dp[j] = j
+    for i in range(1, la + 1):
+        dp[i * stride] = i
+        for j in range(1, stride):
+            dp[i * stride + j] = osa_cell(
+                a=a, b=b, dp=dp, stride=stride, i=i, j=j,
+            )
+    return dp[la * stride + lb]
+
+
+# Finds maximum string length in a CSR offset array to pre-size DP scratch buffers once
+def max_str_len(offs) -> int:
+    n = len(offs) - 1
+    best = 0
+    for k in range(n):
+        ln = offs[k + 1] - offs[k]
+        if ln > best:
+            best = ln
+    return best
+
+
+# Runs batch Levenshtein (rolling 1D) over CSR-packed byte buffers with zero inner allocs
+def batch_lev(buf_a, off_a, buf_b, off_b, out_lev) -> void:
+    n = len(off_a) - 1
+    max_b = max_str_len(off_b)
+    prev = [0] * (max_b + 1)
+    curr = [0] * (max_b + 1)
+    for k in range(n):
+        sa = span(buf_a, off_a[k], off_a[k + 1] - off_a[k])
+        sb = span(buf_b, off_b[k], off_b[k + 1] - off_b[k])
+        out_lev[k] = lev_rolling(a=sa, b=sb, prev=mut(prev), curr=mut(curr))
+
+
+# Runs batch Damerau-Levenshtein (flattened 2D DP) over CSR-packed byte buffers
+def batch_osa(buf_a, off_a, buf_b, off_b, out_osa) -> void:
+    n = len(off_a) - 1
+    max_a = max_str_len(off_a)
+    max_b = max_str_len(off_b)
+    dp = [0] * ((max_a + 1) * (max_b + 1))
+    for k in range(n):
+        sa = span(buf_a, off_a[k], off_a[k + 1] - off_a[k])
+        sb = span(buf_b, off_b[k], off_b[k + 1] - off_b[k])
+        out_osa[k] = osa_flat2d(a=sa, b=sb, dp=mut(dp))
+
+
+# Exercises owned String concat, RAII free, byte iteration and span-view Levenshtein
+def string_raii_stress(reps) -> int:
+    sz = 32
+    prev = [0] * sz
+    curr = [0] * sz
+    total = 0
+    for i in range(reps):
+        s1 = "kitten" + "_key"
+        s2 = "sitting" + "_key"
+        sp1 = span(s1, 0, len(s1))
+        sp2 = span(s2, 0, len(s2))
+        total = total + lev_rolling(a=sp1, b=sp2, prev=mut(prev), curr=mut(curr))
+    return total
+
+
+# Loads 50k CSR string pairs via .paw, runs rolling & 2D-flat DP + String RAII stress
+def main() -> int:
+    buf_a = io_bridge.load_buf_a()
+    off_a = io_bridge.load_off_a()
+    buf_b = io_bridge.load_buf_b()
+    off_b = io_bridge.load_off_b()
+    n = len(off_a) - 1
+    out_lev = [0] * n
+    out_osa = [0] * n
+    t0 = io_bridge.now_sec()
+    batch_lev(
+        buf_a=buf_a, off_a=off_a, buf_b=buf_b, off_b=off_b, out_lev=mut(out_lev),
+    )
+    t1 = io_bridge.now_sec()
+    batch_osa(
+        buf_a=buf_a, off_a=off_a, buf_b=buf_b, off_b=off_b, out_osa=mut(out_osa),
+    )
+    t2 = io_bridge.now_sec()
+    raii_sum = string_raii_stress(n)
+    io_bridge.save_results(out_lev, out_osa)
+    print(t1 - t0, t2 - t1, raii_sum)
+    return 0

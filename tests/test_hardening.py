@@ -342,3 +342,21 @@ def test_e089_allows_scalar_subscript_but_blocks_aggregate_alias(tmp_path):
     assert "PA_E089" in codes(agg_sub)
 
 
+def test_widen_resolves_span_unknown_across_passes(tmp_path):
+    r = run_pa(tmp_path, """
+        def first_byte(s) -> int:
+            return s[0]
+
+        def wrap(buf) -> int:
+            sp = span(buf, 1, 2)
+            return first_byte(sp)
+
+        def main() -> int:
+            s = "abc" + "def"
+            print(wrap(s))
+            return 0
+    """)
+    assert r.stdout.strip() == "98"
+
+
+
