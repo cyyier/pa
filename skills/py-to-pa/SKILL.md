@@ -51,16 +51,17 @@ Trivial one-screen functions (a plain sum, a getter, `main` that just wires call
 12. **Shared libraries never exit the host**: a fault in an `@export` function returns 0 and sets an error; the shell must check `pa_error_code()` after each call (`pa_error_message()`, `pa_error_json()`, `pa_error_clear()`) and turn it into an HTTP error (see `examples/web_shell/app.py: checked`).
 
 ## ⚠ Semantic differences that silently change results
-**Integer `//` and `%` on negative operands differ from Python.** Pa compiles them to C semantics (`sdiv`/`srem`, truncation toward zero); Python floors toward negative infinity.
+**Both integer `//`/`%` AND float `%` on negative operands differ from Python.** Pa compiles them to C semantics (`sdiv`/`srem`/`frem`, truncation toward zero / `fmod`); Python floors toward negative infinity.
 
 | expr | Python | Pa |
 |---|---|---|
 | `-7 // 2` | `-4` | `-3` |
 | `-7 % 3` | `2` | `-1` |
 | `7 % -3` | `-2` | `1` |
+| `-1.0 % 6.283` | `5.283` | `-1.0` |
 
 Rules for the AI doing the port (also apply the string/`mut()` rules above when converting `str` code: Python slicing, string-returning library calls and concatenation in arguments must be rewritten):
-1. Whenever a source expression uses `//` or `%` and an operand *can* be negative (signed data, offsets, modular arithmetic, hash/ring indices, time deltas), do NOT translate it verbatim. Emit a floor-correct form, e.g. `r = a % m; if r < 0: r += m` (for `m > 0`) and `q = a // m; if a % m != 0 and (a < 0) != (m < 0): q -= 1`; put it in a small helper function.
+1. Whenever a source expression uses `//` or `%` (integer **or float**, e.g. angle wrapping `(x + pi) % (2 * pi)`) and an operand *can* be negative (signed data, offsets, modular arithmetic, hash/ring indices, time deltas), do NOT translate it verbatim. Emit a floor-correct form, e.g. `r = a % m; if r < 0: r += m` (or `0.0` for floats, when `m > 0`) and `q = a // m; if a % m != 0 and (a < 0) != (m < 0): q -= 1`; put it in a small helper function.
 2. If both operands are provably non-negative (loop counters from `range`, lengths, unsigned data) the verbatim translation is safe.
 3. Float `//` is unsupported by Pa; use `int(x / y)` only after deciding truncation vs floor explicitly.
 4. Add at least one negative-operand case to the differential test fixtures for every converted `//` or `%`.

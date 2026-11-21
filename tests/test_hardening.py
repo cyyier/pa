@@ -281,3 +281,64 @@ def test_math_intrinsics_and_deep_call_chain(tmp_path):
     """)
     assert r.stdout.strip() == "8.0 5000000000"
 
+
+def test_runtime_repeat_and_typed_empty_vec(tmp_path):
+    r = run_pa(tmp_path, """
+        def push_range(buf, n) -> void:
+            for i in range(n):
+                buf.append(i * 3)
+
+        def forward_push(buf, n) -> void:
+            push_range(mut(buf), n)
+
+        def main() -> int:
+            n = 5
+            a = [1.5] * n
+            neg = -3
+            e = [0] * neg
+            empty = [0] * 0
+            forward_push(mut(empty), 4)
+            print(len(a), a[4], len(e), len(empty), empty[3])
+            return 0
+    """)
+    assert r.stdout.strip() == "5 1.5 0 4 9"
+
+
+def test_e089_allows_scalar_subscript_but_blocks_aggregate_alias(tmp_path):
+    # Scalar subscript read alongside mut(v) is safe (loaded by value before the call)
+    r = run_pa(tmp_path, """
+        def set_link(arr, idx, val) -> void:
+            arr[idx] = val
+
+        def main() -> int:
+            v = [10, 20, 30]
+            set_link(arr=mut(v), idx=0, val=v[2])
+            print(v[0], v[2])
+            return 0
+    """)
+    assert r.stdout.strip() == "30 30"
+    # Passing a span or whole container alongside mut(v) is still blocked
+    span_alias = """
+        def f(a, s) -> int:
+            a.append(1)
+            return len(s)
+
+        def main() -> int:
+            v = [0] * 0
+            v.append(1)
+            return f(mut(v), span(v, 0, 1))
+    """
+    assert "PA_E089" in codes(span_alias)
+    agg_sub = """
+        def f(m, row) -> float:
+            m[0, 0] = 9.0
+            return row[0]
+
+        def main() -> int:
+            m = [[1.0] * 2] * 2
+            print(f(mut(m), m[0]))
+            return 0
+    """
+    assert "PA_E089" in codes(agg_sub)
+
+

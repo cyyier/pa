@@ -1,7 +1,5 @@
 import io_bridge
 
-MAX_N = 100000
-
 PI = 3.141592653589793
 TWO_PI = 2.0 * PI
 DEG_TO_RAD = PI / 180.0
@@ -182,25 +180,31 @@ def batch_to_latlon(eastings, northings, zones, letters, out_lats, out_lons) -> 
         out_lons[i] = ll.lon
 
 
-# Loads 100k coords via .paw, runs flat forward+inverse kernels, saves results via .paw
+# Loads coords via .paw, runs flat forward+inverse kernels, saves results via .paw
 def main() -> int:
     lats = io_bridge.load_lats()
     lons = io_bridge.load_lons()
     n = len(lats)
-    if n > MAX_N:
-        return 2
-    eastings = [0.0] * MAX_N
-    northings = [0.0] * MAX_N
-    zones = [0] * MAX_N
-    letters = [ZONE_LETTERS[0]] * MAX_N
-    rt_lats = [0.0] * MAX_N
-    rt_lons = [0.0] * MAX_N
+    eastings = [0.0] * n
+    northings = [0.0] * n
+    zones = [0] * n
+    letters = [ZONE_LETTERS[0]] * n
+    rt_lats = [0.0] * n
+    rt_lons = [0.0] * n
     t0 = io_bridge.now_sec()
-    batch_from_latlon(lats=lats, lons=lons, eastings=mut(eastings), northings=mut(northings), zones=mut(zones), letters=mut(letters))
+    batch_from_latlon(
+        lats=lats, lons=lons,
+        eastings=mut(eastings), northings=mut(northings),
+        zones=mut(zones), letters=mut(letters),
+    )
     t1 = io_bridge.now_sec()
-    batch_to_latlon(eastings=eastings, northings=northings, zones=zones, letters=letters, out_lats=mut(rt_lats), out_lons=mut(rt_lons))
+    batch_to_latlon(
+        eastings=eastings, northings=northings,
+        zones=zones, letters=letters,
+        out_lats=mut(rt_lats), out_lons=mut(rt_lons),
+    )
     t2 = io_bridge.now_sec()
-    io_bridge.save_utm(span(eastings, 0, n), span(northings, 0, n), span(zones, 0, n), span(letters, 0, n))
-    io_bridge.save_roundtrip(span(rt_lats, 0, n), span(rt_lons, 0, n))
+    io_bridge.save_utm(eastings, northings, zones, letters)
+    io_bridge.save_roundtrip(rt_lats, rt_lons)
     print(t1 - t0, t2 - t1)
     return 0

@@ -126,3 +126,9 @@ Pa Language (.pa) — 完整架构与工程规范Slogan: Inspired by Python, 100
 | 运行时 | 新增 `runtime_core.c`（无 Python 依赖、始终链接）：故障、守卫、print 助手；运行时故障写 `pa_runtime_fault.json`（含 `mode`、`kind`、`detail`、`function`、`line`） |
 
 仍搁置的 P2：绝对路径烘焙、冷启动、`pa_boundary_fault.json` 并发覆盖、栈上向量的深递归栈溢出（待发版/部署阶段处理）。
+
+### 修订 R13：运行期 `[x] * n` 堆 Vec、放宽标量下标 `PA_E089`、`libm` 原语与 Skill 完善
+- **`[x] * n` 升级为运行期堆 `Vec`**：`n` 为运行期变量或 `n <= 0`（或常量 > 64KB）时直接分配连续堆 `Vec<T>`（RAII 自动释放、dev 模式全量越界检查、负 `n` 钳位为 0）。`[0] * 0` / `[0.0] * 0` 即为 100% 兼容 Python 语法的“带类型空动态 `Vec`”，彻底消除多层 `mut()` 转发空列表时的 `PA_E011` 痛点与写死 `MAX_N` 的需求。
+- **`PA_E089` 放宽标量下标/字段读取**：别名检查移至类型推导后执行（`infer.check_aliases`）。`f(mut(v), v[i])` 这类标量下标/字段读在调用前已按值载入寄存器，不持有借用指针，不再误报 `PA_E089`；传入容器本身、`mut(v)`、`span(v, ...)` 或聚合下标（如二维数组行 `m[0]`）仍严格拦截。
+- **内置 `libm` 数学原语**：`sin`、`cos`、`tan`、`sqrt`、`atan`、`atan2`、`exp`、`log`、`floor`、`ceil`；`analyze()` 改为不动点传播（支持任意深度调用链）。
+- **Skill 补齐**：`pa-coder` 补全 `libm` 原语、>4 参数多行纵向对齐规范、`[0] * 0` / `[x] * n` 用法；`pa-coder` 与 `py-to-pa` 均补上浮点 `%` 的 C `fmod` 语义提醒。

@@ -374,10 +374,13 @@ class FuncInferer:
 
     def repeat_list(self, e: ast.BinOp) -> Type:
         elem = self.expr(e.left)
-        n = const_value(e.right, self.mod.consts)
-        if n is None or not isinstance(elem, FixedList) and False:
-            return UNKNOWN
+        self.expr(e.right)
         el = elem.elem if isinstance(elem, FixedList) else UNKNOWN
+        if el == UNKNOWN:
+            return UNKNOWN
+        n = const_value(e.right, self.mod.consts)
+        if n is None or n <= 0:
+            return Vec(el)
         return self.fixed_or_vec(FixedList(el, n * len(e.left.elts)))
 
     def fixed_or_vec(self, t: FixedList) -> Type:
@@ -832,6 +835,7 @@ def analyze(tree: ast.Module, sink: Optional[DiagnosticSink] = None, source: str
         if nxt == prev:
             break
     run_pass(sink)
+    check_aliases(mod, sink)
     check_temp_strings(mod, sink)
     for fi in mod.funcs.values():
         build_hints(fi)
@@ -876,6 +880,49 @@ def check_declared_return(fi: FuncInfo, declared: Type, sink: DiagnosticSink) ->
                               f"return statements infer to {annotation_str(fi.ret)}"],
                 patches=[{"line": node.lineno, "action": "replace_annotation",
                           "replacement": f"-> {annotation_str(fi.ret)}"}])
+
+
+def _alias_root(e) -> Optional[str]:
+    if isinstance(e, ast.Call) and isinstance(e.func, ast.Name) and e.func.id == "span" and e.args:
+        return _alias_root(e.args[0])
+    while isinstance(e, (ast.Attribute, ast.Subscript)):
+        e = e.value
+    return e.id if isinstance(e, ast.Name) else None
+
+
+def check_aliases(mod: ModuleInfo, sink: DiagnosticSink) -> None:
+    """PA_E089: same variable passed twice while one occurrence is mut().
+
+    Scalar subscript/attribute reads (e.g. `halfedges[ar]`) are loaded by value before the call
+    and do not borrow a pointer, so they are allowed alongside `mut(halfedges)`.
+    """
+    for fi in mod.funcs.values():
+        for n in ast.walk(fi.node):
+            if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in mod.funcs):
+                continue
+            name = n.func.id
+            args = list(n.args) + [k.value for k in n.keywords]
+            muts, borrows = [], []
+            for a in args:
+                if isinstance(a, ast.Call) and isinstance(a.func, ast.Name) and a.func.id == "mut" \
+                        and a.args and isinstance(a.args[0], ast.Name):
+                    muts.append(a.args[0].id)
+                    borrows.append(a.args[0].id)
+                else:
+                    r = _alias_root(a)
+                    if r is not None:
+                        t = resolve(mod.expr_types.get(id(a), UNKNOWN))
+                        if is_aggregate(t) or isinstance(t, Span) or t == UNKNOWN:
+                            borrows.append(r)
+            for m in dict.fromkeys(muts):
+                if borrows.count(m) > 1:
+                    sink.report("PA_E089", n, f"'{m}' is passed to '{name}' more than once and one of them is mut()",
+                                inferred_context={"variable": m, "callee": name},
+                                causal_chain=[f"{name}() receives '{m}' through two parameters",
+                                              "one of them may append/realloc",
+                                              "the other view would dangle (use-after-free)"],
+                                patches=[{"line": n.lineno,
+                                          "replacement": f"copy_of_{m} = {m}\n{name}(... mut({m}) ..., copy_of_{m})"}])
 
 
 def check_temp_strings(mod: ModuleInfo, sink: DiagnosticSink) -> None:

@@ -156,7 +156,6 @@ class Validator:
                                  inferred_context={"callee": name})
             if name in self.funcs:
                 self.check_mut_args(n, name)
-                self.check_alias(n, name)
 
     def check_mut_args(self, n: ast.Call, name: str) -> None:
         params = [a.arg for a in self.funcs[name].args.args]

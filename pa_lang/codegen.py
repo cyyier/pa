@@ -1058,12 +1058,15 @@ class FnGen:
         return tmp
 
     def heap_repeat(self, e, t: Vec):
-        """`[x] * N` above the 64KB stack limit: contiguous heap Vec (owned by the receiving variable)."""
+        """`[x] * n` with runtime n, n <= 0, or above the 64KB stack limit: contiguous heap Vec."""
         b = self.b
         k = len(e.left.elts)
-        reps = const_value(e.right, self.info.consts)
-        total = reps * k
-        data = b.call(self.mg.malloc, [ci(max(total * t.elem.size, 1), I64T)])
+        raw_reps = self.coerce(self.value(e.right), self.ty(e.right), I64)
+        reps = b.select(b.icmp_signed("<", raw_reps, ci(0, I64T)), ci(0, I64T), raw_reps)
+        total = b.mul(reps, ci(k, I64T))
+        raw_bytes = b.mul(total, ci(t.elem.size, I64T))
+        nbytes = b.select(b.icmp_signed(">", raw_bytes, ci(0, I64T)), raw_bytes, ci(1, I64T))
+        data = b.call(self.mg.malloc, [nbytes])
         tmp = self.alloca(VEC, "bigrep")
         self.store_vec_header(b, tmp, data, total, total)
         i = self.alloca(I64T, "rep.i")
@@ -1075,7 +1078,7 @@ class FnGen:
                 idx = b.add(b.mul(rep, ci(k, I64T)), ci(j, I64T))
                 self.store_to(b.gep(data, [idx], inbounds=True, source_etype=self.lt(t.elem)), t.elem, x)
 
-        self.loop(ast.Pass(), lambda: b.icmp_signed("<", b.load(i, typ=I64T), ci(reps, I64T)), body,
+        self.loop(ast.Pass(), lambda: b.icmp_signed("<", b.load(i, typ=I64T), reps), body,
                   lambda: b.store(b.add(b.load(i, typ=I64T), ci(1, I64T)), i), body=[])
         return tmp
 
