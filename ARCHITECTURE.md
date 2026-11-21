@@ -85,3 +85,8 @@ Pa Language (.pa) — 完整架构与工程规范Slogan: Inspired by Python, 100
 - 客户端 `src/extension.js` 仅负责启动 `pac lsp`（自动优先 `<workspace>/.venv/bin/pac`，可用 `pa.pacPath` 覆盖）并提供重启 / dev·prod 构建 / `--ai-diagnostic` 检查命令；行内类型提示、悬浮内存审计卡片与诊断均由服务端提供。
 - 打包：`npm install && npx @vscode/vsce package --skip-license --allow-missing-repository` 得到 `pa-lang-0.1.0.vsix`。
 - 测试：`npm test`（vscode-textmate 实际分词）与 `tests/test_lsp_stdio.py`（真实 LSP JSON-RPC 往返：initialize → didOpen → inlayHint → hover → didChange 诊断 → shutdown）。
+
+### 修订 R8：函数 Out（返回类型）默认写明
+- 任何 `.pa` 函数都允许并**默认要求**写 `-> T`（`f64`、`i64`、`Vec[T]`、`list[T, N]`、`void`、`@struct` 名）；形参仍不标注（仅 `@export` / `.paw` 完整标注）。
+- 编译器把声明与推导结果对照：不一致报 `PA_E085`（附带按推导结果改写注解的补丁）；数值类型之间不报错，按声明类型做隐式转换（如 `-> f64` 返回整数）；未知类型名同样报 `PA_E085`。声明的返回类型同时用于递归调用与 `@export` ABI。
+- 三个 Skill 与示例（benchmark、pipeline_demo）已改为默认写 `-> T`。

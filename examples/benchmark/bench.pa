@@ -2,7 +2,7 @@ N = 50000000
 MOD = 2147483648
 
 
-def lcg_sum(n):
+def lcg_sum(n) -> i64:
     x = 12345
     s = 0
     for i in range(n):
@@ -11,7 +11,7 @@ def lcg_sum(n):
     return s
 
 
-def leibniz(n):
+def leibniz(n) -> f64:
     s = 0.0
     sign = 1.0
     for i in range(n):
@@ -20,7 +20,7 @@ def leibniz(n):
     return 4.0 * s
 
 
-def main():
+def main() -> i64:
     print(lcg_sum(N))
     print(leibniz(N))
     return 0

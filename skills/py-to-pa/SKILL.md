@@ -12,7 +12,7 @@ description: Refactor an existing Python repository to Pa for speed, using a thr
 
 ## Step 2 – Convert
 1. Replace classes with `@struct` (annotated fields only); dict/set/tuple -> `@struct` or homogeneous lists.
-2. Strip annotations from function bodies; keep them only on `@struct` fields and `@export` signatures.
+2. Strip annotations from function bodies and parameters, but **write the return type (`-> T`) on every converted function by default** (e.g. `def mean(xs) -> f64:`); `@export` and `.paw` functions keep full parameter annotations too. Run `pac check` — `PA_E085` tells you when the declared Out disagrees with the body.
 3. Remove `try/except`, generators, lambdas, closures, `*args`; use plain loops and guard clauses.
 4. Each library interaction becomes a `.paw` function operating on whole batches (`span[f64]` in, scalar / `Vec[f64]` out). DataFrames/Responses/ORM objects must be created and destroyed inside the `.paw`.
 5. Run `pac check --ai-diagnostic .` until green.

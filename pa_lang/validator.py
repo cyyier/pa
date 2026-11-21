@@ -198,9 +198,8 @@ class Validator:
                     self.sink.report("PA_E005", p, f"parameter '{p.arg}' of non-export '{fn.name}' is annotated",
                                      inferred_context={"function": fn.name},
                                      patches=[{"line": p.lineno, "replacement": p.arg}])
-            if fn.returns is not None:
-                self.sink.report("PA_E005", fn, f"return annotation on non-export '{fn.name}'",
-                                 inferred_context={"function": fn.name})
+            # a return annotation (the function's "Out") is allowed everywhere and checked against inference
+            self.check_ann_nodes([fn.returns], fn)
 
     def check_ann_nodes(self, anns, fn) -> None:
         for ann in anns:

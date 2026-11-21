@@ -339,3 +339,59 @@ def test_cli_mode_flag(tmp_path):
     assert pac(["check", str(tmp_path), "--mode", "prod"]) == 0
     assert pac(["build", str(tmp_path / "main.pa"), "-o", str(tmp_path / "x"), "--mode", "dev"]) == 1
     assert pac(["build", str(tmp_path / "main.pa"), "-o", str(tmp_path / "x"), "--mode", "prod"]) == 0
+
+
+# ---------------------------------------------------------------- explicit function Out (-> T) everywhere
+def test_return_annotation_allowed_on_all_functions_and_checked():
+    ok = textwrap.dedent("""
+        def total(xs) -> f64:
+            s = 0.0
+            for i in range(len(xs)):
+                s += xs[i]
+            return s
+
+        def squares(n) -> Vec[i64]:
+            out = []
+            for i in range(n):
+                out.append(i * i)
+            return out
+
+        def noop() -> void:
+            x = 1
+
+        def count() -> i64:
+            return 3
+
+        def main() -> i64:
+            a = [1.0, 2.0]
+            t = total(a)
+            v = squares(4)
+            noop()
+            return count()
+    """)
+    assert codes(ok) == []
+    assert "PA_E005" in codes("def f(a: i64) -> i64:\n    return a\n")          # params stay unannotated
+    assert "PA_E005" in codes("def f() -> Optional[i64]:\n    return 1\n")
+
+
+def test_return_annotation_mismatch_e085():
+    assert "PA_E085" in codes('def f() -> f64:\n    return "x"\n')
+    assert "PA_E085" in codes("def f() -> void:\n    return 1\n")
+    assert "PA_E085" in codes("def f() -> i64:\n    x = [1.0, 2.0]\n    return x\n")
+    assert "PA_E085" in codes("def f() -> Vec[f64]:\n    out = []\n    out.append(1)\n    return out\n")
+    assert "PA_E085" in codes("def f() -> nonsense:\n    return 1\n")
+    d = [x for x in check_source("def f() -> f64:\n    return \"x\"\n", "t.pa") if x.code == "PA_E085"][0]
+    assert d.inferred_context["inferred"] == "str_view"
+    assert "-> str_view" in d.repair_plan["suggested_patches"][0]["replacement"]
+
+
+def test_numeric_returns_are_coerced_to_declared_type(tmp_path):
+    r = run_pa(tmp_path, """
+        def half(x) -> f64:
+            return 1
+
+        def main() -> i64:
+            print(half(0))
+            return 0
+    """)
+    assert r.stdout.strip() == "1"

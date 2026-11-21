@@ -66,6 +66,8 @@ CATALOG = {
                 "Make every return path produce the declared return type (no implicit/explicit None, no int for f64).", []),
     "PA_E084": ("boundary", "error", "pa-coder#paw-readonly-input",
                 "span/list/Vec parameters are read-only zero-copy views: copy first (np.array(arr)) before writing.", []),
+    "PA_E085": ("annotations", "error", "pa-coder#return-annotation",
+                "Make the `-> T` annotation match what the body actually returns (or fix the body).", []),
     "PA_E090": ("boundary", "error", "pa-coder#paw-call",
                 "Call the .paw function with arguments matching its declared signature.", []),
     "PA_E081": ("annotations", "error", "pa-coder#export-annotations",

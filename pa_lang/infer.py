@@ -742,7 +742,7 @@ def analyze(tree: ast.Module, sink: Optional[DiagnosticSink] = None, source: str
     sink = sink or DiagnosticSink(source, filename)
     mod = collect_module(tree, sink, search_dirs)
     for fi in mod.funcs.values():
-        if fi.exported and fi.node.returns is not None:
+        if fi.node.returns is not None:
             fi.ret = parse_annotation(fi.node.returns, mod.structs)
     for pass_no in range(3):
         final = pass_no == 2
@@ -750,14 +750,53 @@ def analyze(tree: ast.Module, sink: Optional[DiagnosticSink] = None, source: str
         for fi in mod.funcs.values():
             fi.params = initial_params(mod, fi)
             fi.locals, fi.raii_free_lines, fi.copy_lines = {}, [], {}
-            declared = parse_annotation(fi.node.returns, mod.structs) if fi.exported and fi.node.returns else None
+            declared = parse_annotation(fi.node.returns, mod.structs) if fi.node.returns is not None else None
             FuncInferer(mod, fi.node, fi, cur).run()
             if declared is not None:
+                check_declared_return(fi, declared, cur)
                 fi.ret = declared
     check_temp_strings(mod, sink)
     for fi in mod.funcs.values():
         build_hints(fi)
     return mod
+
+
+def annotation_str(t: Type) -> str:
+    """Pa annotation spelling of a type (for repair patches)."""
+    t = resolve(t)
+    if isinstance(t, FixedList):
+        return f"list[{annotation_str(t.elem)}, {t.n}]"
+    if isinstance(t, (Vec, StackVec)):
+        return f"Vec[{annotation_str(t.elem)}]"
+    return t.fmt()
+
+
+def compatible_return(declared: Type, inferred: Type) -> bool:
+    declared, inferred = resolve(declared), resolve(inferred)
+    if declared == inferred or inferred == UNKNOWN:
+        return True
+    if is_numeric(declared) and is_numeric(inferred):
+        return True                                   # numeric results are coerced to the declared type
+    if isinstance(declared, (Vec, StackVec)) and isinstance(inferred, (Vec, StackVec)):
+        return declared.elem == inferred.elem
+    return False
+
+
+def check_declared_return(fi: FuncInfo, declared: Type, sink: DiagnosticSink) -> None:
+    node = fi.node
+    if declared == UNKNOWN:
+        sink.report("PA_E085", node.returns, f"unknown return type annotation '{ast.unparse(node.returns)}' on '{fi.name}'",
+                    inferred_context={"function": fi.name, "inferred": annotation_str(fi.ret)},
+                    patches=[{"line": node.lineno, "replacement": f"def {fi.name}(...) -> {annotation_str(fi.ret)}:"}])
+        return
+    if compatible_return(declared, fi.ret):
+        return
+    sink.report("PA_E085", node.returns, f"'{fi.name}' is annotated -> {annotation_str(declared)} but its body returns {annotation_str(fi.ret)}",
+                inferred_context={"function": fi.name, "declared": annotation_str(declared), "inferred": annotation_str(fi.ret)},
+                causal_chain=[f"annotation fixes the output to {annotation_str(declared)}",
+                              f"return statements infer to {annotation_str(fi.ret)}"],
+                patches=[{"line": node.lineno, "action": "replace_annotation",
+                          "replacement": f"-> {annotation_str(fi.ret)}"}])
 
 
 def check_temp_strings(mod: ModuleInfo, sink: DiagnosticSink) -> None:
