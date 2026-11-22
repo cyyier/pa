@@ -466,6 +466,31 @@
 <span class="text-ink-muted select-none">$ </span><span class="tok-id">pac bundle ./app --with-stdlib</span></code></pre>
           </div>
 
+          <div class="border hairline bg-surface rounded-md p-4 space-y-2.5">
+            <div class="font-mono text-[11px] text-ink-muted">RUNTIME RESOLUTION &amp; TROUBLESHOOTING</div>
+            <ul class="text-xs leading-relaxed text-ink-secondary space-y-1.5 list-disc pl-4">
+              <li>
+                <strong class="text-ink-primary">Embedded <code class="font-mono">.paw</code> sources:</strong>
+                compiled binaries embed imported <code class="font-mono">.paw</code> files (no hard-coded source paths).
+                Set <code class="font-mono text-ink-primary">PA_PATH=dir1:dir2</code> to prefer live <code class="font-mono">.paw</code> files while developing.
+              </li>
+              <li>
+                <strong class="text-ink-primary">Python discovery order:</strong>
+                home <code class="font-mono text-ink-primary">PA_PYTHON_HOME</code> &gt; <code class="font-mono text-ink-primary">PYTHONHOME</code> &gt;
+                <code class="font-mono text-ink-primary">./python-home</code> &gt; build-time default;
+                packages <code class="font-mono text-ink-primary">PA_PYPATH</code> &gt; <code class="font-mono text-ink-primary">$VIRTUAL_ENV</code> site-packages.
+                Pure-native programs (no <code class="font-mono">.paw</code>) link no Python at all.
+              </li>
+              <li>
+                <strong class="text-ink-primary">Missing <code class="font-mono">libpython</code> or stdlib:</strong>
+                a missing <code class="font-mono">libpython</code> fails in the dynamic loader (exit 127); run
+                <code class="font-mono text-ink-primary">pac doctor ./app</code> and <code class="font-mono text-ink-primary">pac bundle ./app --with-stdlib</code>.
+                An unusable Python home produces a friendly <code class="font-mono text-ink-primary">"direction": "STARTUP"</code> fault (exit 70) in
+                <code class="font-mono text-ink-primary">pa_boundary_fault.json</code> (override path with <code class="font-mono text-ink-primary">PA_FAULT_PATH</code>).
+              </li>
+            </ul>
+          </div>
+
           <div class="border hairline bg-surface rounded-md p-4 space-y-2">
             <div class="font-mono text-[11px] text-ink-muted">FRAMEWORK SHELLS (FASTAPI / FLASK / STREAMLIT)</div>
             <p class="text-xs leading-relaxed text-ink-secondary">
