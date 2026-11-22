@@ -150,7 +150,7 @@
           <a href="#tooling" class="toc-link block pl-3.5 py-1 text-ink-secondary hover:text-ink-primary border-l border-transparent -ml-px transition-colors">10 · Tooling &amp; LSP</a>
           <a href="#skills" class="toc-link block pl-3.5 py-1 text-ink-secondary hover:text-ink-primary border-l border-transparent -ml-px transition-colors">11 · AI Skills</a>
           <a href="#layout" class="toc-link block pl-3.5 py-1 text-ink-secondary hover:text-ink-primary border-l border-transparent -ml-px transition-colors">12 · Repo &amp; Testing</a>
-          <a href="#roadmap" class="toc-link block pl-3.5 py-1 text-ink-secondary hover:text-ink-primary border-l border-transparent -ml-px transition-colors">13 · Limits &amp; Roadmap</a>
+          <a href="#roadmap" class="toc-link block pl-3.5 py-1 text-ink-secondary hover:text-ink-primary border-l border-transparent -ml-px transition-colors">13 · Design Choices &amp; Roadmap</a>
         </nav>
 
         <div class="mt-7 pt-5 border-t hairline space-y-2 font-mono text-[11px] text-ink-muted">
@@ -594,20 +594,20 @@
           </div>
         </section>
 
-        <!-- 13. LIMITS & ROADMAP -->
+        <!-- 13. DESIGN CHOICES & ROADMAP -->
         <section id="roadmap" class="scroll-mt-20 space-y-4">
           <div class="flex items-baseline gap-3">
             <span class="font-mono text-xs text-accent tabular-nums">13</span>
-            <h2 class="text-xl font-semibold tracking-tight text-ink-primary">Platform support, limits &amp; roadmap</h2>
+            <h2 class="text-xl font-semibold tracking-tight text-ink-primary">Design choices &amp; roadmap</h2>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             <div class="bg-surface border hairline rounded-md p-4 space-y-2">
-              <div class="font-mono text-ink-primary font-semibold">Current limits (v0.1.0)</div>
+              <div class="font-mono text-ink-primary font-semibold">Design choices (by intent)</div>
               <ul class="text-ink-secondary space-y-1.5 list-disc pl-4 leading-relaxed">
-                <li>Linux x86-64, macOS (arm64 / x86-64), and Windows x64 build targets.</li>
-                <li><code class="ic">.paw</code> cannot return strings or structs; <code class="ic">@struct</code> fields cannot be <code class="ic">Vec</code> yet.</li>
-                <li>Helpers are monomorphic over container layouts (do not mix stack <code class="ic">FixedList</code> and heap <code class="ic">Vec</code> at the same parameter).</li>
-                <li>No <code class="ic">dict</code>/<code class="ic">set</code>/<code class="ic">tuple</code>, closures, generators, or <code class="ic">try/except</code>.</li>
+                <li>Native LLVM targets for Linux x86-64, macOS (arm64 / x86-64), and Windows x64 with zero GC pauses.</li>
+                <li><strong class="text-ink-primary">Explicit boundary ownership:</strong> <code class="ic">.paw</code> returns text as RAII-managed <code class="ic">Vec[uint8]</code> (UTF-8 byte buffer) rather than raw <code class="ic">str</code>, and structured data crosses as flat SoA arrays instead of opaque structs.</li>
+                <li><strong class="text-ink-primary">Flat, cache-friendly layouts:</strong> helpers are monomorphic over container layouts (unify mixed stack/heap callers via <code class="ic">span[T]</code>), ragged 2-D lists lower to flat CSR <code class="ic">Vec[Vec[T]]</code>, and <code class="ic">@struct</code> stays flat POD.</li>
+                <li><strong class="text-ink-primary">Predictable compute:</strong> no <code class="ic">dict</code>/<code class="ic">set</code>/<code class="ic">tuple</code>, closures, generators, or <code class="ic">try/except</code> in <code class="ic">.pa</code> — keep dynamic Python logic in <code class="ic">.paw</code>.</li>
               </ul>
             </div>
             <div class="bg-surface border hairline rounded-md p-4 space-y-2">
