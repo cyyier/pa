@@ -202,7 +202,15 @@ def _round_up(x: int, a: int) -> int:
     return (x + a - 1) // a * a
 
 
-_PY_NAMES = {"i64": "int", "f64": "float"}
+_PY_NAMES = {
+    "i64": "int",
+    "u64": "uint",
+    "f64": "float",
+    "i32": "int32",
+    "u8": "uint8",
+    "u32": "uint32",
+    "f32": "float32",
+}
 
 
 def display(t: Type) -> str:
@@ -245,8 +253,16 @@ def resolve(t: Type) -> Type:
 SCALARS = {t.name: t for t in (I32, I64, U8, U32, U64, F32, F64, BOOL, VOID)}
 SCALARS["str_view"] = STR_VIEW
 SCALARS["bytes_view"] = BYTES_VIEW
-SCALARS["int"] = I64          # Python-flavoured aliases of the default widths
+SCALARS["int"] = I64          # Python/NumPy-flavoured defaults and explicit widths
+SCALARS["uint"] = U64
 SCALARS["float"] = F64
+SCALARS["int32"] = I32
+SCALARS["int64"] = I64
+SCALARS["uint8"] = U8
+SCALARS["uint32"] = U32
+SCALARS["uint64"] = U64
+SCALARS["float32"] = F32
+SCALARS["float64"] = F64
 
 AGGREGATES = (FixedList, StackVec, Vec, StructT)
 
@@ -290,7 +306,13 @@ INTRINSICS = {
 }
 MATH_UNARY = ("sin", "cos", "tan", "sqrt", "atan", "exp", "log", "floor", "ceil")
 MATH_BINARY = ("atan2", "pow")
-BUILTINS_OK = {"range", "len", "min", "max", "abs", "int", "float", "bool", "print", *MATH_UNARY, *MATH_BINARY}
+BUILTINS_OK = {
+    "range", "len", "min", "max", "abs", "print", "bool",
+    "int", "uint", "float",
+    "int32", "int64", "uint8", "uint32", "uint64", "float32", "float64",
+    "i32", "i64", "u8", "u32", "u64", "f32", "f64",
+    *MATH_UNARY, *MATH_BINARY,
+}
 FORBIDDEN_CALLS = {
     "eval", "exec", "compile", "getattr", "setattr", "hasattr", "delattr",
     "globals", "locals", "vars", "type", "__import__", "isinstance",

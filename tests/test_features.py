@@ -419,17 +419,49 @@ def test_numeric_returns_are_coerced_to_declared_type(tmp_path):
     assert r.stdout.strip() == "1.0"
 
 
-# ---------------------------------------------------------------- Python-flavoured int / float
+# ---------------------------------------------------------------- Python/NumPy-flavoured numeric names
 def test_int_float_aliases_and_python_flavoured_display():
-    from pa_lang.types import F64, I32, I64, display, parse_annotation, FixedList, StackVec, U8
+    from pa_lang.types import F32, F64, I32, I64, U8, U32, U64, display, parse_annotation, FixedList, StackVec
     import ast as _ast
     assert parse_annotation(_ast.parse("int", mode="eval").body, {}) == I64
+    assert parse_annotation(_ast.parse("uint", mode="eval").body, {}) == U64
     assert parse_annotation(_ast.parse("float", mode="eval").body, {}) == F64
+    assert parse_annotation(_ast.parse("int32", mode="eval").body, {}) == I32
+    assert parse_annotation(_ast.parse("int64", mode="eval").body, {}) == I64
+    assert parse_annotation(_ast.parse("uint8", mode="eval").body, {}) == U8
+    assert parse_annotation(_ast.parse("uint32", mode="eval").body, {}) == U32
+    assert parse_annotation(_ast.parse("uint64", mode="eval").body, {}) == U64
+    assert parse_annotation(_ast.parse("float32", mode="eval").body, {}) == F32
+    assert parse_annotation(_ast.parse("float64", mode="eval").body, {}) == F64
     assert parse_annotation(_ast.parse("list[float, 4]", mode="eval").body, {}) == FixedList(F64, 4)
-    assert [display(t) for t in (I64, F64, I32, U8)] == ["int", "float", "i32", "u8"]
+    assert [display(t) for t in (I64, U64, F64, I32, U8, U32, F32)] == [
+        "int", "uint", "float", "int32", "uint8", "uint32", "float32"
+    ]
     assert display(StackVec(I64, 8)) == "StackVec<int, max=8>"
-    assert codes("def f(x) -> int:\n    return 1\n\ndef g() -> float:\n    return 1.5\n") == []
+    assert codes("def f(x) -> int:\n    return 1\n\ndef g() -> float:\n    return 1.5\n\ndef h() -> uint:\n    return uint(7)\n") == []
     assert "PA_E085" in codes('def f() -> int:\n    return "x"\n')
+
+
+def test_uint_and_explicit_width_casts_end_to_end(tmp_path):
+    r = run_pa(tmp_path, """
+        @struct
+        class Packet:
+            tag: uint8
+            seq: uint32
+            crc: uint
+            val: float32
+            delta: int32
+
+        def main() -> int:
+            p = Packet(tag=uint8(255), seq=uint32(4294967295), crc=uint(1) << uint(63), val=float32(1.5), delta=int32(-42))
+            # Short aliases remain fully compatible
+            x = u32(10) + uint32(20)
+            y = u64(1) + uint(2) + uint64(3)
+            print(p.tag, p.seq >> uint32(1), p.crc >> uint(63), p.val, p.delta, x, y)
+            return 0
+    """)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "255 2147483647 1 1.5 -42 30 6"
 
 
 def test_alias_in_export_struct_and_paw_signatures(tmp_path):
@@ -449,21 +481,21 @@ def test_alias_in_export_struct_and_paw_signatures(tmp_path):
 
 def test_inlay_hints_use_python_names_but_keep_narrow_types():
     from pa_lang.lsp_server import DocAnalysis
-    src = ("@struct\nclass P:\n    a: i32\n    b: u8\n\ndef main() -> int:\n    n = 3\n    f = 1.5\n"
+    src = ("@struct\nclass P:\n    a: int32\n    b: uint8\n\ndef main() -> int:\n    n = 3\n    f = 1.5\n"
            "    p = P(a=1, b=2)\n    w = p.a\n    c = p.b\n    return n\n")
     da = DocAnalysis(src, "t.pa")
     labels = {t for _, _, t in da.hints()}
     assert ": int" in labels and ": float" in labels and ": P" in labels
-    assert ": i32" in labels and ": u8" in labels                    # narrow types stay loud
-    md = da.hover(10, 4)                                             # 'c' : u8
-    assert "u8 (1B, stack)" in md and "narrow type" in md
+    assert ": int32" in labels and ": uint8" in labels                # narrow types stay loud
+    md = da.hover(10, 4)                                             # 'c' : uint8
+    assert "uint8 (u8, 1B, stack)" in md and "narrow type" in md
 
 
 def test_simple_display_names():
-    from pa_lang.types import (F32, F64, I32, I64, STR_VIEW, U8, FixedList, StackVec, StrOwned, Vec, simple_display)
+    from pa_lang.types import (F32, F64, I32, I64, STR_VIEW, U8, U32, U64, FixedList, StackVec, StrOwned, Vec, simple_display)
     assert simple_display(FixedList(F64, 16)) == "list[float]"
     assert simple_display(StackVec(I64, 64)) == "list[int]"
-    assert simple_display(Vec(F32)) == "list[f32]"          # narrow element types stay visible
+    assert simple_display(Vec(F32)) == "list[float32]"      # narrow element types stay visible
     assert simple_display(StrOwned()) == "str" and simple_display(STR_VIEW) == "str"
-    assert [simple_display(t) for t in (I64, F64, I32, U8)] == ["int", "float", "i32", "u8"]
+    assert [simple_display(t) for t in (I64, U64, F64, I32, U8, U32)] == ["int", "uint", "float", "int32", "uint8", "uint32"]
 

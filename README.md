@@ -88,7 +88,7 @@ pytest -q                          # run full compiler, runtime, LSP, doctor, an
 
 **Current (`v0.1.0` alpha):**
 - **Supported:** Linux x86-64, macOS (arm64 / x86-64), Windows x64, CPython 3.11–3.13, `gcc` / `clang` / MSVC `cl`, LLVM via `llvmlite`.
-- **Included:** zero-annotation `.pa` compiler (`i32`/`i64`/`u8`/`u32`/`u64`/`f32`/`f64`/`bool`, `**`, zero-copy `str_view` slicing, `@struct`, stack/RAII `Vec`, flat CSR `Vec[Vec[T]]`, `String`, `libm`, multi-file `.pa` module imports via local dirs / `-I` / `PA_PATH` / pip packages), `.paw` zero-copy CPython bridge with two-way customs, `--shared` guarded C-ABI libraries, `pac doctor` / `pac bundle` (ELF / Mach-O / PE), `pac skill`, `pac lsp`, and VS Code extension.
+- **Included:** zero-annotation `.pa` compiler (`int`/`uint`/`float`/`bool`, explicit widths `int32`/`uint8`/`uint32`/`uint64`/`float32` + short aliases `i32`/`u8`/`u32`/`u64`/`f32`, `**`, zero-copy `str_view` slicing, `@struct`, stack/RAII `Vec`, flat CSR `Vec[Vec[T]]`, `String`, `libm`, multi-file `.pa` module imports via local dirs / `-I` / `PA_PATH` / pip packages), `.paw` zero-copy CPython bridge with two-way customs, `--shared` guarded C-ABI libraries, `pac doctor` / `pac bundle` (ELF / Mach-O / PE), `pac skill`, `pac lsp`, and VS Code extension.
 
 **Planned:**
 - Standalone ecosystem packages (`pa-libs`) for common data, geometry, and parsing libraries (powered by multi-file `.pa` module imports).

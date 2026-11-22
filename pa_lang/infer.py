@@ -628,19 +628,19 @@ class FuncInferer:
             return VOID
         if n in ("copy", "free"):
             return VOID
-        if n in ("int", "i64"):
+        if n in ("int", "int64", "i64"):
             return I64
-        if n == "i32":
+        if n in ("int32", "i32"):
             return I32
-        if n == "u8":
+        if n in ("uint8", "u8"):
             return U8
-        if n == "u32":
+        if n in ("uint32", "u32"):
             return U32
-        if n == "u64":
+        if n in ("uint", "uint64", "u64"):
             return U64
-        if n in ("float", "f64"):
+        if n in ("float", "float64", "f64"):
             return F64
-        if n == "f32":
+        if n in ("float32", "f32"):
             return F32
         if n == "bool":
             return BOOL

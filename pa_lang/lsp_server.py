@@ -130,8 +130,8 @@ class DocAnalysis:
         shown, real = display(t), t.fmt()
         head = f"{shown} ({real}, {t.size}B, {short})" if shown != real else f"{shown} ({t.size}B, {short})"
         rows = [f"**{loc.name}**: `{head}`", ""]
-        if isinstance(t, Scalar) and t.name in ("i32", "u8", "f32"):
-            rows += [f"> narrow type `{t.name}`: watch for overflow / precision loss (chosen for size or C ABI)", ""]
+        if isinstance(t, Scalar) and t.name in ("i32", "u8", "u32", "f32"):
+            rows += [f"> narrow type `{display(t)}` (`{t.name}`): watch for overflow / precision loss (chosen for size or C ABI)", ""]
         rows += [f"- LLVM layout: `{llvm_t}`",
                 f"- size: **{t.size} B**" + (f", element stride: **{stride} B**" if stride else ""),
                 f"- storage: {where}" + (" -- ownership transferred to caller" if loc.escapes else "")]
