@@ -104,8 +104,12 @@ def eval_const(node, mod) -> object:
             if isinstance(node.op, ast.Div): return a / b
             if isinstance(node.op, ast.FloorDiv): return a // b
             if isinstance(node.op, ast.Mod): return a % b
+            if isinstance(node.op, ast.Pow):
+                if isinstance(b, int) and abs(b) > 1000:
+                    return None
+                return a ** b
             return None
-        except ZeroDivisionError:
+        except (ZeroDivisionError, ValueError, OverflowError):
             return None
     return None
 
@@ -123,6 +127,8 @@ def widen(old: Type, new: Type) -> Type:
     if old == UNKNOWN:
         return new
     if isinstance(old, (Span, Vec, Ptr)) and type(old) is type(new) and old.elem == UNKNOWN:
+        return new
+    if isinstance(old, Span) and old.elem == UNKNOWN and new == STR_VIEW:
         return new
     if is_numeric(old) and is_numeric(new):
         return promote(old, new)
@@ -267,6 +273,8 @@ class FuncInferer:
                 self.allocs[name] = s.lineno
             elif fname == "span" and val.args and isinstance(val.args[0], ast.Name):
                 self.span_locals[name] = val.args[0].id
+        elif isinstance(val, ast.Subscript) and isinstance(val.slice, ast.Slice) and isinstance(val.value, ast.Name):
+            self.span_locals[name] = val.value.id
         t = self.expr(val)
         if isinstance(val, ast.Name):
             t = self.value_copy(name, val, t, s)
@@ -453,14 +461,23 @@ class FuncInferer:
     def e_Subscript(self, e) -> Type:
         bt = resolve(self.expr(e.value))
         if isinstance(e.slice, ast.Slice):
-            is_s = is_str(bt)
-            self.sink.report("PA_E071", e, "string slicing 'S[a:b]' is not supported (it would allocate a new string)" if is_s
-                             else "slice 'arr[a:b]' creates an implicit heap copy",
+            if e.slice.lower is not None:
+                self.expr(e.slice.lower)
+            if e.slice.upper is not None:
+                self.expr(e.slice.upper)
+            if e.slice.step is not None:
+                self.expr(e.slice.step)
+            if is_str(bt):
+                if e.slice.step is not None:
+                    self.sink.report("PA_E071", e, "stepped string slicing 's[a:b:step]' is not contiguous and cannot be a zero-copy str_view",
+                                     inferred_context={"base": bt.fmt()},
+                                     causal_chain=["str_view requires contiguous bytes (ptr, len)", "non-unit step would require heap allocation"])
+                    return UNKNOWN
+                return STR_VIEW
+            self.sink.report("PA_E071", e, "slice 'arr[a:b]' creates an implicit heap copy",
                              inferred_context={"base": bt.fmt()},
                              causal_chain=["Python slicing allocates a new list"],
-                             patches=[{"line": e.lineno, "replacement":
-                                       "index s[i] (u8) / for ch in s, or copy bytes with an explicit loop" if is_s
-                                       else "span(arr, start, len)"}])
+                             patches=[{"line": e.lineno, "replacement": "span(arr, start, len)"}])
             return UNKNOWN
         if isinstance(e.slice, ast.Tuple):          # m[i, j] == m[i][j]
             t = bt
@@ -559,7 +576,10 @@ class FuncInferer:
         if n == "alloc" and e.args and isinstance(e.args[0], ast.Name):
             return Ptr(SCALARS.get(e.args[0].id) or self.mod.structs.get(e.args[0].id, UNKNOWN))
         if n == "span" and arg_ts:
-            return Span(getattr(resolve(arg_ts[0]), "elem", UNKNOWN))
+            base_t = resolve(arg_ts[0])
+            if is_str(base_t):
+                return STR_VIEW
+            return Span(getattr(base_t, "elem", UNKNOWN))
         if n == "mut" and arg_ts:
             return arg_ts[0]
         if n == "len":
@@ -766,9 +786,11 @@ class FuncInferer:
                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "span" and n.args \
                         and isinstance(n.args[0], ast.Name):
                     base = n.args[0].id
+                elif isinstance(n, ast.Subscript) and isinstance(n.slice, ast.Slice) and isinstance(n.value, ast.Name):
+                    base = n.value.id
                 elif isinstance(n, ast.Name) and n.id in self.span_locals:
                     base = self.span_locals[n.id]
-                if base and base in local_names:
+                if base and base in local_names and is_aggregate(self.info.locals[base].type):
                     self.sink.report("PA_E040", r, f"returning a span over local '{base}' leaves a dangling pointer",
                                      inferred_context={"base": base, "storage": self.info.locals[base].storage},
                                      causal_chain=[f"'{base}' is a local container", "span borrows its memory",

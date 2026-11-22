@@ -604,18 +604,17 @@
               <div class="font-mono text-ink-primary font-semibold">Current limits (v0.1.0)</div>
               <ul class="text-ink-secondary space-y-1.5 list-disc pl-4 leading-relaxed">
                 <li>Linux x86-64, macOS (arm64 / x86-64), and Windows x64 build targets.</li>
-                <li>No string slicing; <code class="ic">.paw</code> cannot return strings or structs; <code class="ic">@struct</code> fields cannot be <code class="ic">Vec</code> yet.</li>
+                <li><code class="ic">.paw</code> cannot return strings or structs; <code class="ic">@struct</code> fields cannot be <code class="ic">Vec</code> yet.</li>
                 <li>Helpers are monomorphic over container layouts (do not mix stack <code class="ic">FixedList</code> and heap <code class="ic">Vec</code> at the same parameter).</li>
-                <li>No <code class="ic">**</code>, <code class="ic">dict</code>/<code class="ic">set</code>/<code class="ic">tuple</code>, closures, generators, or <code class="ic">try/except</code>.</li>
+                <li>No <code class="ic">dict</code>/<code class="ic">set</code>/<code class="ic">tuple</code>, closures, generators, or <code class="ic">try/except</code>.</li>
               </ul>
             </div>
             <div class="bg-surface border hairline rounded-md p-4 space-y-2">
-              <div class="font-mono text-ink-primary font-semibold">Roadmap</div>
+              <div class="font-mono text-ink-primary font-semibold">Roadmap &amp; Non-goals</div>
               <ul class="text-ink-secondary space-y-1.5 list-disc pl-4 leading-relaxed">
                 <li>Nested <code class="ic">Vec</code> fields inside <code class="ic">@struct</code> with automatic recursive RAII destructors.</li>
-                <li>Generic <code class="ic">**</code> operator and string slicing as zero-copy <code class="ic">str_view</code> spans.</li>
-                <li>Optional static <code class="ic">libpython</code> linking for single-file self-contained binaries.</li>
-                <li>Recursion-depth guard and standalone ecosystem packages (<code class="ic">pa-libs</code>).</li>
+                <li>Multi-file <code class="ic">.pa</code> module imports and standalone ecosystem packages (<code class="ic">pa-libs</code>).</li>
+                <li><strong class="text-ink-primary">Non-goal:</strong> static <code class="ic">libpython</code> single-file binaries (incompatible with Windows/macOS CPython distributions and third-party <code class="ic">.pyd</code>/<code class="ic">.so</code> C extensions; use <code class="ic">pac build --bundle --with-stdlib</code> instead).</li>
               </ul>
             </div>
           </div>

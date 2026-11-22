@@ -92,9 +92,10 @@ pytest -q                          # run full compiler, runtime, LSP, doctor, an
 
 **Planned:**
 - Nested `Vec` fields inside `@struct` with recursive RAII destructors.
-- `**` exponentiation operator and zero-copy string slicing (`str_view` spans).
-- Optional static `libpython` linking for single-file self-contained binaries.
-- Standalone ecosystem packages (`pa-libs`) for common data, geometry, and parsing libraries.
+- Multi-file `.pa` module imports and standalone ecosystem packages (`pa-libs`) for common data, geometry, and parsing libraries.
+
+**Non-goals (won't do):**
+- Static `libpython` linking for single-file self-contained binaries — standard Python distributions do not ship portable `libpython.a` (especially on Windows/macOS), and third-party Python C extensions (`.pyd`/`.so` such as NumPy) require dynamic `libpython`. Use `pac build --bundle --with-stdlib` for self-contained directory distribution.
 
 ---
 

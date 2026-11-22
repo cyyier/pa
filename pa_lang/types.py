@@ -280,7 +280,7 @@ INTRINSICS = {
     "free": "free(p)",
 }
 MATH_UNARY = ("sin", "cos", "tan", "sqrt", "atan", "exp", "log", "floor", "ceil")
-MATH_BINARY = ("atan2",)
+MATH_BINARY = ("atan2", "pow")
 BUILTINS_OK = {"range", "len", "min", "max", "abs", "int", "float", "bool", "print", *MATH_UNARY, *MATH_BINARY}
 FORBIDDEN_CALLS = {
     "eval", "exec", "compile", "getattr", "setattr", "hasattr", "delattr",

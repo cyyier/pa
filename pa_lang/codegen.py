@@ -693,6 +693,13 @@ class FnGen:
             return self.int_divmod(l, r, node, True, unsigned=(t in UNSIGNED))
         if isinstance(op, ast.Mod):
             return b.frem(l, r) if fl else self.int_divmod(l, r, node, False, unsigned=(t in UNSIGNED))
+        if isinstance(op, ast.Pow):
+            if fl:
+                lf = b.fpext(l, F64T) if t == F32 else l
+                rf = b.fpext(r, F64T) if t == F32 else r
+                res = b.call(self.mg.math_fns["pow"], [lf, rf])
+                return b.fptrunc(res, F32T) if t == F32 else res
+            return self.int_pow(l, r, t, node)
         if fl:
             self.err(f"operator {type(op).__name__} on floats is not supported", node)
         rshift = b.lshr if t in UNSIGNED else b.ashr
@@ -700,6 +707,38 @@ class FnGen:
             if isinstance(op, cls):
                 return f(l, r)
         self.err(f"operator {type(op).__name__} is not supported", node)
+
+    def int_pow(self, l, r, t: Type, node):
+        """Integer exponentiation by squaring; negative signed exponent raises ValueError."""
+        b = self.b
+        ty = l.type
+        zero, one = ir.Constant(ty, 0), ir.Constant(ty, 1)
+        if t not in UNSIGNED:
+            self.guard(b.icmp_signed(">=", r, zero), "ValueError",
+                       "negative integer exponent (use float base for negative powers)", node)
+        res_slot = self.alloca(ty, "pow_res")
+        base_slot = self.alloca(ty, "pow_base")
+        exp_slot = self.alloca(ty, "pow_exp")
+        b.store(one, res_slot)
+        b.store(l, base_slot)
+        b.store(r, exp_slot)
+        cond_bb = self.fn.append_basic_block("pow_cond")
+        body_bb = self.fn.append_basic_block("pow_body")
+        end_bb = self.fn.append_basic_block("pow_end")
+        b.branch(cond_bb)
+        b.position_at_end(cond_bb)
+        exp = b.load(exp_slot, typ=ty)
+        b.cbranch(b.icmp_unsigned("!=", exp, zero), body_bb, end_bb)
+        b.position_at_end(body_bb)
+        cur_res = b.load(res_slot, typ=ty)
+        cur_base = b.load(base_slot, typ=ty)
+        odd = b.icmp_unsigned("!=", b.and_(exp, one), zero)
+        b.store(b.select(odd, b.mul(cur_res, cur_base), cur_res), res_slot)
+        b.store(b.mul(cur_base, cur_base), base_slot)
+        b.store(b.lshr(exp, one), exp_slot)
+        b.branch(cond_bb)
+        b.position_at_end(end_bb)
+        return b.load(res_slot, typ=ty)
 
     def int_divmod(self, l, r, node, is_div: bool, unsigned: bool = False):
         """Integer // and %: divisor 0 raises ZeroDivisionError; x // -1 and x % -1 cannot trap on INT_MIN."""
@@ -830,8 +869,38 @@ class FnGen:
         return self.b.load(slot, typ=self.lt(t))
 
     def v_Subscript(self, e):
+        if isinstance(e.slice, ast.Slice):
+            return self.str_slice(e)
         t = self.ty(e)
         return self.b.load(self.addr_of(e), typ=self.lt(t, e))
+
+    def str_slice(self, e):
+        """Zero-copy str_view slice s[a:b] with Python-compatible negative-index and [0, len] clamping."""
+        b = self.b
+        t = self.ty(e.value)
+        if not is_str(t):
+            self.err("slices are only supported on strings (use span(arr, start, len) for lists)", e)
+        if e.slice.step is not None:
+            self.err("stepped string slicing is not supported (not contiguous)", e)
+        ptr, n, _ = self.seq_view(e.value)
+        zero = ci(0, I64T)
+
+        def clamp_idx(expr, default):
+            if expr is None:
+                return default
+            idx = self.coerce(self.value(expr), self.ty(expr), I64)
+            neg = b.icmp_signed("<", idx, zero)
+            idx = b.select(neg, b.add(idx, n), idx)
+            idx = b.select(b.icmp_signed("<", idx, zero), zero, idx)
+            return b.select(b.icmp_signed(">", idx, n), n, idx)
+
+        lo = clamp_idx(e.slice.lower, zero)
+        hi = clamp_idx(e.slice.upper, n)
+        hi = b.select(b.icmp_signed("<", hi, lo), lo, hi)
+        p = b.gep(ptr, [lo], inbounds=True, source_etype=I8)
+        ln = b.sub(hi, lo)
+        v = b.insert_value(ir.Constant(VIEW, ir.Undefined), p, 0)
+        return b.insert_value(v, ln, 1)
 
     def v_Attribute(self, e):
         return self.b.load(self.addr_of(e), typ=self.lt(self.ty(e), e))

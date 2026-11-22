@@ -22,7 +22,7 @@ description: Write new Pa (.pa) projects from scratch with Host-First architectu
    f(tmp)
    ```
 2. **Empty lists + `mut()`: use `[0] * 0` / `[0.0] * 0` for multi-level `mut()`** (`PA_E011` names the callee it was forwarded to). `x = []` filled only through `mut(x)` gets its element type from a single-level callee's direct `append`. Whenever an empty dynamic `Vec` will be passed through multiple levels of `mut()`, declare it with `[0] * 0` (empty `Vec[int]`) or `[0.0] * 0` (empty `Vec[float]`) so the element type is known immediately and 100% Python-compatible.
-3. **No string slicing** (`PA_E071`). Use `s[i]` (a `u8`), `for ch in s`, `span` over a char array, or copy bytes with an explicit loop.
+3. **Zero-copy string slicing**: `s[a:b]` and `span(s, start, len)` on `str_view`/`String` return a zero-copy `str_view` (negative bounds and clamping work as in Python; stepped slicing `s[a:b:step]` is rejected with `PA_E071`, and returning a slice over a local owned `String` is rejected with `PA_E040`). List slicing `arr[a:b]` is still `PA_E071` — use `span(arr, start, len)`.
 4. **A `.paw` function must not return a string** (`PA_E082`). Return the characters as `Vec[u8]` (a char/byte array) and let the `.pa` side own it; encode on the `.paw` side with e.g. `np.frombuffer(s.encode("utf-8"), dtype=np.uint8)` or `list(s.encode("utf-8"))`. Passing strings *into* a `.paw` as `str_view` is fine.
 
 ## Hard rule: one-line comment on every non-obvious function

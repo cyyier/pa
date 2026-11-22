@@ -183,11 +183,69 @@ def test_e011_message_for_multi_level_mut():
     assert "PA_E011" not in codes(top)
 
 
-def test_string_slice_rejected():
-    assert "PA_E071" in codes('def f():\n    s = "hello"\n    t = s[1:3]\n    return 0\n')
-    d = [x for x in check_source('def f():\n    s = "hello"\n    t = s[1:3]\n    return 0\n', "t.pa")
-         if x.code == "PA_E071"][0]
-    assert "string slicing" in d.summary
+def test_string_slice_zero_copy_and_safety(tmp_path):
+    # Stepped slicing is still rejected (not contiguous)
+    assert "PA_E071" in codes('def f():\n    s = "hello"\n    t = s[0:4:2]\n    return 0\n')
+    # Returning a slice of a local owned String is rejected as dangling (PA_E040)
+    assert "PA_E040" in codes('@export\ndef f(a: str_view) -> str_view:\n    s = a + "!"\n    return s[1:3]\n')
+    assert "PA_E040" in codes('@export\ndef f(a: str_view) -> str_view:\n    s = a + "!"\n    t = s[1:3]\n    return t\n')
+    # Returning a slice of a static str_view literal or param is safe
+    assert codes('def f() -> str_view:\n    s = "hello"\n    return s[1:4]\n') == []
+    assert codes('@export\ndef f(s: str_view) -> str_view:\n    return s[1:-1]\n') == []
+    # End-to-end execution: positive, negative, omitted bounds, empty clamp, String slice, span(s, start, len)
+    r = run_pa(tmp_path, """
+        def trim_first(s) -> str_view:
+            return s[1:]
+
+        def main():
+            s = "hello, world!"
+            a = s[0:5]
+            b = s[7:12]
+            c = s[-6:-1]
+            d = s[:5]
+            e = s[7:]
+            f = s[10:2]
+            g = s[-100:100]
+            h = span(s, 7, 5)
+            owned = a + "-" + b
+            sub = owned[3:8]
+            print(a, b, c, d, e, len(f), g, h, sub, trim_first("abc"))
+            return 0
+    """)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "hello world world hello world! 0 hello, world! world lo-wo bc"
+
+
+def test_exponentiation_operator(tmp_path):
+    r = run_pa(tmp_path, """
+        K = 2 ** 10
+
+        def main():
+            a = 2 ** 10
+            b = 3 ** 0
+            c = 0 ** 0
+            d = 2 ** 60
+            e = 2.0 ** -1.0
+            f = 9.0 ** 0.5
+            g = u32(3) ** u32(4)
+            x = 2
+            x **= 5
+            print(K, a, b, c, d, e, f, g, x, pow(2.0, 8.0))
+            return 0
+    """)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "1024 1024 1 1 1152921504606846976 0.5 3.0 81 32 256.0"
+
+    # Negative integer exponent raises ValueError at runtime
+    r_err = run_pa(tmp_path, """
+        def neg(n):
+            return 2 ** n
+
+        def main():
+            print(neg(-1))
+            return 0
+    """, expect_code=70)
+    assert "ValueError" in r_err.stderr
 
 
 def test_paw_cannot_return_string():
