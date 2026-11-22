@@ -501,19 +501,18 @@
               </p>
             </div>
 
-            <!-- LSP Inlay Audit Preview -->
+            <!-- LSP Inlay Hints & Hover Memory-Audit Screenshot -->
             <div class="mt-6 bg-canvas border hairline rounded-md overflow-hidden">
               <div class="px-3.5 py-2 border-b hairline flex items-center justify-between font-mono text-[11px] text-ink-muted">
-                <span>pac lsp · inlayHints.detail = "detailed"</span>
+                <span>pac lsp · live inlay hints &amp; hover memory audit</span>
                 <span>0 PyObject*</span>
               </div>
-              <pre class="p-3.5 font-mono text-[12px] leading-[1.7] overflow-x-auto tabular-nums"><code><span class="tok-kw">@struct</span>
-<span class="tok-kw">class</span> <span class="tok-id">UtmPoint</span><span class="tok-op">:</span>  <span class="tok-cm"># C layout, 26B natural alignment</span>
-    <span class="tok-id">easting</span><span class="tok-op">:</span> <span class="tok-id">float</span><span class="tok-op">;</span> <span class="tok-id">northing</span><span class="tok-op">:</span> <span class="tok-id">float</span><span class="tok-op">;</span> <span class="tok-id">zone_letter</span><span class="tok-op">:</span> <span class="tok-id">uint8</span>
-
-<span class="tok-id">buf</span> <span class="tok-op">= [</span><span class="tok-id">0.0</span><span class="tok-op">] *</span> <span class="tok-id">16</span>  <span class="border hairline bg-surface text-ink-secondary px-1.5 py-0.5 rounded text-[11px]">: list[float, 16] (128B stack)</span>
-<span class="tok-id">out</span> <span class="tok-op">= []</span>          <span class="border hairline bg-surface text-ink-secondary px-1.5 py-0.5 rounded text-[11px]">: StackVec&lt;float, max=60&gt; (Zero-Heap)</span>
-<span class="tok-id">dyn</span> <span class="tok-op">= [</span><span class="tok-id">0.0</span><span class="tok-op">] *</span> <span class="tok-id">n</span>   <span class="border hairline bg-surface text-ink-secondary px-1.5 py-0.5 rounded text-[11px]">: Vec&lt;float&gt; (RAII free @ return)</span></code></pre>
+              <img
+                src="lsp-hover.png"
+                alt="VS Code Pa Language Server showing inferred-type inlay hints and hover memory-audit card with LLVM layout, byte size, element stride, storage strategy, and cyclomatic complexity"
+                class="w-full h-auto block"
+                loading="lazy"
+              />
             </div>
           </article>
 
