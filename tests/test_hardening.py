@@ -2,13 +2,14 @@
 import ctypes
 import json
 import subprocess
+import sys
 import textwrap
 
 import pytest
 
 from pa_lang.build import BuildError, compile_pa
 from pa_lang.validator import check_source
-from tests.test_codegen import run_pa
+from tests.test_codegen import SHARED_EXT, run_pa
 
 
 def codes(src, name="t.pa", **kw):
@@ -16,7 +17,7 @@ def codes(src, name="t.pa", **kw):
 
 
 def fault(tmp_path, name="pa_runtime_fault.json"):
-    return json.loads((tmp_path / name).read_text())
+    return json.loads((tmp_path / name).read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------- runtime faults (dev mode)
@@ -226,7 +227,7 @@ def test_shared_library_fault_returns_to_host(tmp_path):
         def at(xs: span[float], i: int) -> float:
             return xs[i]
     """))
-    so = compile_pa(str(src), out=str(tmp_path / "lib.so"), shared=True)
+    so = compile_pa(str(src), out=str(tmp_path / f"lib{SHARED_EXT}"), shared=True)
     lib = ctypes.CDLL(so)
     lib.pa_error_message.restype = ctypes.c_char_p
     lib.pa_error_json.restype = ctypes.c_char_p
@@ -251,7 +252,7 @@ def test_shared_library_boundary_fault_returns_to_host_and_releases_gil(tmp_path
     (tmp_path / "w.paw").write_text("def f(x: f64) -> f64:\n    return None\n")
     src = tmp_path / "lib.pa"
     src.write_text("import w\n\n@export\ndef go(x: float) -> float:\n    return w.f(x)\n")
-    so = compile_pa(str(src), out=str(tmp_path / "lib.so"), shared=True, mode="prod")
+    so = compile_pa(str(src), out=str(tmp_path / f"lib{SHARED_EXT}"), shared=True, mode="prod")
     lib = ctypes.CDLL(so)
     lib.go.argtypes, lib.go.restype = [ctypes.c_double], ctypes.c_double
     lib.pa_error_message.restype = ctypes.c_char_p

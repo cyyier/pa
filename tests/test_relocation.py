@@ -9,30 +9,43 @@ import tomllib
 
 import pytest
 
-from pa_lang.build import compile_pa, c_string_literal
+from pa_lang.build import compile_pa, c_string_literal, default_python_paths, python_link_info
 
 MAIN = "import w\n\ndef main() -> int:\n    print(w.f(2.0))\n    return 0\n"
 PAW = "def f(x: f64) -> f64:\n    return x * 10.0\n"
 
 
+def _runtime_lib_env(env: dict) -> dict:
+    pyinfo = python_link_info()
+    if sys.platform == "win32":
+        env["PATH"] = os.pathsep.join([pyinfo["dll_dir"], env.get("PATH", "")])
+    elif sys.platform == "darwin":
+        env["DYLD_LIBRARY_PATH"] = os.pathsep.join(
+            [p for p in (pyinfo["libdir"], env.get("DYLD_LIBRARY_PATH", "")) if p]
+        )
+    else:
+        env["LD_LIBRARY_PATH"] = pyinfo["libdir"]
+    return env
+
+
 def build(tmp_path, name="proj", paw=PAW, main=MAIN, **kw):
     src = tmp_path / name
     src.mkdir()
-    (src / "w.paw").write_text(textwrap.dedent(paw))
-    (src / "main.pa").write_text(main)
+    (src / "w.paw").write_text(textwrap.dedent(paw), encoding="utf-8")
+    (src / "main.pa").write_text(main, encoding="utf-8")
     exe = compile_pa(str(src / "main.pa"), out=str(src / "prog"), **kw)
     return src, exe
 
 
 def run(exe, cwd, env=None):
-    return subprocess.run([exe], capture_output=True, text=True, cwd=cwd, env=env or os.environ)
+    return subprocess.run([exe], capture_output=True, text=True, encoding="utf-8", cwd=cwd, env=env or os.environ)
 
 
 def test_binary_survives_moving_and_deleting_the_source_tree(tmp_path):
     src, exe = build(tmp_path)
     dest = tmp_path / "deploy"
     dest.mkdir()
-    moved = shutil.copy(exe, dest / "prog")
+    moved = shutil.copy(exe, dest / os.path.basename(exe))
     shutil.rmtree(src)                                    # the .paw and .pa are gone
     r = run(moved, dest)
     assert r.returncode == 0 and r.stdout.strip() == "20.0", r.stderr
@@ -84,8 +97,11 @@ def test_relocatable_build_resolves_python_from_environment(tmp_path):
             return float(np.sum(np.array([x, x])))
     '''
     _, exe = build(tmp_path, paw=third, relocatable=True)
-    env = dict(os.environ, PA_PYTHON_HOME=sys.base_prefix, PA_PYPATH=sysconfig.get_paths()["purelib"],
-               LD_LIBRARY_PATH=sysconfig.get_config_var("LIBDIR"))        # relocatable: host provides libpython
+    env = _runtime_lib_env(dict(
+        os.environ,
+        PA_PYTHON_HOME=sys.base_prefix,
+        PA_PYPATH=os.pathsep.join(default_python_paths()),
+    ))
     env.pop("VIRTUAL_ENV", None)
     r = run(exe, tmp_path, env)
     assert r.returncode == 0 and r.stdout.strip() == "4.0", r.stderr
@@ -94,9 +110,7 @@ def test_relocatable_build_resolves_python_from_environment(tmp_path):
 def test_virtual_env_site_packages_are_found_at_run_time(tmp_path):
     third = "import numpy as np\n\ndef f(x: f64) -> f64:\n    return float(np.float64(x) * 3)\n"
     _, exe = build(tmp_path, paw=third, relocatable=True)
-    venv = os.path.dirname(os.path.dirname(sys.executable))
-    env = dict(os.environ, PA_PYTHON_HOME=sys.base_prefix, VIRTUAL_ENV=venv,
-               LD_LIBRARY_PATH=sysconfig.get_config_var("LIBDIR"))
+    env = _runtime_lib_env(dict(os.environ, PA_PYTHON_HOME=sys.base_prefix, VIRTUAL_ENV=sys.prefix))
     env.pop("PA_PYPATH", None)
     r = run(exe, tmp_path, env)
     assert r.returncode == 0 and r.stdout.strip() == "6.0", r.stderr

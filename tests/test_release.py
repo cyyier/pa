@@ -45,7 +45,10 @@ def test_project_metadata_is_complete():
     assert p["urls"]["Homepage"] == "https://palang.dev"
     assert p["urls"]["Repository"] == "https://github.com/cyyier/pa"
     assert p["urls"]["Issues"] == "https://github.com/cyyier/pa/issues"
-    assert "Operating System :: POSIX :: Linux" in p["classifiers"]
+    for os_cls in ("Operating System :: POSIX :: Linux",
+                   "Operating System :: MacOS",
+                   "Operating System :: Microsoft :: Windows"):
+        assert os_cls in p["classifiers"]
     assert p["requires-python"] == ">=3.11"
     assert {"dev", "web", "release"} <= set(p["optional-dependencies"])
     assert all(re.search(r">=\d", d) for d in p["dependencies"])           # no unbounded-below runtime deps
@@ -74,18 +77,19 @@ def test_readme_links_are_absolute_for_pypi():
 
 def test_ci_and_release_workflows_exist_and_are_consistent():
     ci, rel = read(".github", "workflows", "ci.yml"), read(".github", "workflows", "release.yml")
-    for needle in ('"3.11", "3.12", "3.13"', "pac doctor", "pytest -q", "twine check", "npm test"):
+    for needle in ('"3.11"', '"3.12"', '"3.13"', "ubuntu-latest", "macos-latest", "windows-latest",
+                   "pac doctor", "pytest -q", "twine check", "npm test"):
         assert needle in ci, needle
     for needle in ("tags: [\"v*\"]", "id-token: write", "pypa/gh-action-pypi-publish", "softprops/action-gh-release", "vsce package"):
         assert needle in rel, needle
     assert re.search(r"__version__", rel)                                       # tag must match the package version
 
 
-def test_non_linux_build_gets_a_clear_error(tmp_path, monkeypatch):
+def test_unsupported_platform_build_gets_a_clear_error(tmp_path, monkeypatch):
     (tmp_path / "main.pa").write_text("def main() -> int:\n    return 0\n")
-    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(sys, "platform", "freebsd14")
     monkeypatch.delenv("PA_ALLOW_UNSUPPORTED_PLATFORM", raising=False)
-    with pytest.raises(BuildError, match="Linux only"):
+    with pytest.raises(BuildError, match="Linux, macOS, and Windows"):
         compile_pa(str(tmp_path / "main.pa"))
     ir = compile_pa(str(tmp_path / "main.pa"), emit_ir=True)                    # IR emission is platform independent
     assert "pa_user_main" in ir

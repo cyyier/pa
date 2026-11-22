@@ -153,7 +153,7 @@
           <div class="lg:col-span-5 flex flex-col items-start">
             <div class="inline-flex items-center gap-2 font-mono text-[11px] text-ink-secondary border hairline bg-surface rounded-full px-3 py-1 mb-5">
               <span class="w-1.5 h-1.5 rounded-full bg-accent"></span>
-              <span>Open Source · MIT License · Linux x86-64</span>
+              <span>Open Source · MIT License · Linux · macOS · Windows</span>
             </div>
 
             <h1 class="text-4xl sm:text-[44px] font-semibold tracking-tight leading-[1.08] text-ink-primary">
@@ -524,16 +524,16 @@
               <div class="flex items-center justify-between gap-2 mb-3">
                 <span class="font-mono text-[11px] text-ink-muted">02 · COMPILER PIPELINE</span>
                 <span class="font-mono text-[11px] text-ink-secondary border hairline bg-canvas px-2 py-0.5 rounded">
-                  llvmlite · gcc
+                  llvmlite · C ABI
                 </span>
               </div>
               <h3 class="text-lg font-semibold tracking-tight text-ink-primary">
-                Native binaries &amp; guarded .so
+                Native binaries &amp; guarded shared libs
               </h3>
               <p class="mt-2 text-sm leading-relaxed text-ink-secondary">
                 Direct AST lowering to LLVM IR with <code class="font-mono text-xs text-ink-primary">-O2</code>.
-                Ship standalone ELF executables or <code class="font-mono text-xs text-ink-primary">--shared</code>
-                libraries with <code class="font-mono text-xs text-ink-primary">setjmp</code> fault guards for FastAPI shells.
+                Ship standalone ELF / Mach-O / PE executables or <code class="font-mono text-xs text-ink-primary">--shared</code>
+                libraries with <code class="font-mono text-xs text-ink-primary">setjmp</code> fault guards.
               </p>
             </div>
 
@@ -581,8 +581,8 @@
 
                 <!-- Node: Native Output -->
                 <rect x="164" y="128" width="208" height="36" rx="4" fill="#111113" stroke="rgba(255,255,255,0.22)" />
-                <text x="176" y="144" fill="#FAFAFA" font-family="JetBrains Mono, monospace" font-size="10.5" font-weight="600">native ELF / lib.so</text>
-                <text x="176" y="157" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="9">gcc link · $ORIGIN rpath</text>
+                <text x="176" y="144" fill="#FAFAFA" font-family="JetBrains Mono, monospace" font-size="10.5" font-weight="600">native bin / shared lib</text>
+                <text x="176" y="157" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="9">clang/gcc/cl · @rpath/$ORIGIN</text>
               </svg>
             </div>
           </article>

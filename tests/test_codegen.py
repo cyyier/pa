@@ -1,20 +1,23 @@
 import ctypes
 import json
 import subprocess
+import sys
 import textwrap
 
 import pytest
 
 from pa_lang.build import BuildError, compile_pa
 
+SHARED_EXT = ".dll" if sys.platform == "win32" else ".dylib" if sys.platform == "darwin" else ".so"
+
 
 def run_pa(tmp_path, src, paws=None, expect_code=0, env=None, mode="dev"):
     for name, body in (paws or {}).items():
-        (tmp_path / f"{name}.paw").write_text(textwrap.dedent(body))
+        (tmp_path / f"{name}.paw").write_text(textwrap.dedent(body), encoding="utf-8")
     main = tmp_path / "main.pa"
-    main.write_text(textwrap.dedent(src))
+    main.write_text(textwrap.dedent(src), encoding="utf-8")
     exe = compile_pa(str(main), out=str(tmp_path / "prog"), mode=mode)
-    r = subprocess.run([exe], capture_output=True, text=True, cwd=tmp_path, env=env)
+    r = subprocess.run([exe], capture_output=True, text=True, encoding="utf-8", cwd=tmp_path, env=env)
     assert r.returncode == expect_code, (r.stdout, r.stderr)
     return r
 
@@ -208,7 +211,7 @@ def test_shared_library_export(tmp_path):
                 s = s + xs[i]
             return s / 4
     """))
-    so = compile_pa(str(src), out=str(tmp_path / "lib.so"), shared=True)
+    so = compile_pa(str(src), out=str(tmp_path / f"lib{SHARED_EXT}"), shared=True)
     lib = ctypes.CDLL(so)
     lib.dot.argtypes, lib.dot.restype = [ctypes.c_int, ctypes.c_int], ctypes.c_int
     assert lib.dot(6, 7) == 43

@@ -17,16 +17,14 @@ First public release.
 - Hardening diagnostics `PA_E073`, `PA_E086`-`PA_E089`; Python-compatible `print`.
 
 ### Tooling
-- `pac check [--ai-diagnostic]`, `pac build [--mode dev|prod] [--shared] [--relocatable]`, `pac lsp`,
-  `pac doctor`, `pac bundle [--with-stdlib]`, `pac --version`.
-- Relocatable binaries (runtime Python resolution via `PA_PYTHON_HOME` / `PA_PYPATH` / `VIRTUAL_ENV` / `PA_PATH`).
+- `pac check [--ai-diagnostic]`, `pac build [--mode dev|prod] [--shared] [--relocatable]`, `pac lsp`, `pac doctor`, `pac bundle [--with-stdlib]`, `pac skill`, `pac --version`.
+- Relocatable binaries (runtime Python resolution via `PA_PYTHON_HOME` / `PA_PYPATH` / `VIRTUAL_ENV` / `PA_PATH`) and pure-Python ELF / Mach-O / PE loader diagnostics across Linux, macOS, and Windows.
 - Language server (inlay hints, hover memory audit, diagnostics, auto-restart) and a VS Code extension (`pa` / `paw`).
-- Skills: `pa-coder`, `py-to-pa`, `cpp-to-pa`.
+- Skills: `pa-coder`, `py-to-pa`, `cpp-to-pa` (also installable via `pac skill --install`).
 
 ### Examples
-- `utm`, `delaunator`, `levenshtein`, `kdtree`, `pipeline_demo`, `web_shell`, `benchmark`, each with a differential
-  verification against a pure-Python reference.
+- `pipeline_demo`, `hashlib_pa` (CRC-32 + SHA-256), and `raytracer` (`Ray Tracing in One Weekend` port).
 
 ### Known limits
-- Linux only (ELF, `/proc/self/exe`); needs `gcc` and a CPython with headers and a shared `libpython`.
+- Needs CPython 3.11–3.13 with development headers/shared library and a C compiler (`gcc`, `clang`, or MSVC `cl`).
 - String slicing, `str` returns from `.paw` and structs across the `.paw` boundary are not supported.

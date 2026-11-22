@@ -5,6 +5,7 @@
  *               thread-local storage and longjmps back, so the host process survives. The host
  *               reads pa_error_code() / pa_error_message() / pa_error_json() after each call.
  */
+#define _CRT_SECURE_NO_WARNINGS
 #include <math.h>
 #include <setjmp.h>
 #include <stdint.h>
@@ -13,13 +14,31 @@
 #include <string.h>
 
 #ifndef PA_MODE
+#if defined(PA_MODE_PROD) && PA_MODE_PROD
+#define PA_MODE "prod"
+#else
 #define PA_MODE "dev"
 #endif
+#endif
 
-static __thread jmp_buf *g_guard = NULL;
-static __thread int g_err_code = 0;
-static __thread char g_err_msg[512];
-static __thread char *g_err_json = NULL;
+#ifdef _MSC_VER
+#define PA_TLS __declspec(thread)
+#define PA_STRDUP _strdup
+#else
+#define PA_TLS __thread
+#define PA_STRDUP strdup
+#endif
+
+#ifdef _WIN32
+#define PA_EXPORT __declspec(dllexport)
+#else
+#define PA_EXPORT __attribute__((visibility("default")))
+#endif
+
+static PA_TLS jmp_buf *g_guard = NULL;
+static PA_TLS int g_err_code = 0;
+static PA_TLS char g_err_msg[512];
+static PA_TLS char *g_err_json = NULL;
 static void (*g_fault_hook)(void) = NULL;   /* e.g. release the GIL before unwinding */
 
 void pa_set_fault_hook(void (*hook)(void)) { g_fault_hook = hook; }
@@ -32,10 +51,10 @@ void *pa_guard_enter(void *jb) {
 }
 void pa_guard_leave(void *prev) { g_guard = (jmp_buf *)prev; }
 
-int pa_error_code(void) { return g_err_code; }
-const char *pa_error_message(void) { return g_err_msg; }
-const char *pa_error_json(void) { return g_err_json ? g_err_json : ""; }
-void pa_error_clear(void) { g_err_code = 0; g_err_msg[0] = 0; free(g_err_json); g_err_json = NULL; }
+PA_EXPORT int pa_error_code(void) { return g_err_code; }
+PA_EXPORT const char *pa_error_message(void) { return g_err_msg; }
+PA_EXPORT const char *pa_error_json(void) { return g_err_json ? g_err_json : ""; }
+PA_EXPORT void pa_error_clear(void) { g_err_code = 0; g_err_msg[0] = 0; free(g_err_json); g_err_json = NULL; }
 
 void pa_fault_raise(const char *file_default, const char *summary, const char *json) {
     if (g_fault_hook) g_fault_hook();
@@ -43,7 +62,7 @@ void pa_fault_raise(const char *file_default, const char *summary, const char *j
         g_err_code = 70;
         snprintf(g_err_msg, sizeof g_err_msg, "%s", summary);
         free(g_err_json);
-        g_err_json = strdup(json);
+        g_err_json = PA_STRDUP(json);
         jmp_buf *g = g_guard;
         g_guard = NULL;
         longjmp(*g, 1);

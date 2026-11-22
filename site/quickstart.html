@@ -164,15 +164,15 @@
         <div class="mt-8 pt-6 border-t hairline space-y-2 font-mono text-[11px] text-ink-muted">
           <div class="flex items-center justify-between">
             <span>Platform</span>
-            <span class="text-ink-secondary">Linux x86-64</span>
+            <span class="text-ink-secondary">Linux · macOS · Win</span>
           </div>
           <div class="flex items-center justify-between">
             <span>Python</span>
             <span class="text-ink-secondary tabular-nums">3.11–3.13</span>
           </div>
           <div class="flex items-center justify-between">
-            <span>Linker</span>
-            <span class="text-ink-secondary">gcc · llvmlite</span>
+            <span>Backend</span>
+            <span class="text-ink-secondary">llvmlite · gcc/clang/cl</span>
           </div>
         </div>
       </aside>
@@ -204,8 +204,8 @@
             <h2 class="text-xl font-semibold tracking-tight text-ink-primary">Install &amp; verify toolchain</h2>
           </div>
           <p class="text-sm leading-relaxed text-ink-secondary">
-            Requires Linux x86-64, <code class="font-mono text-xs text-ink-primary">gcc</code>, and CPython 3.11–3.13
-            with development headers and a shared <code class="font-mono text-xs text-ink-primary">libpython</code>
+            Requires Linux x86-64, macOS, or Windows x64, a C compiler (<code class="font-mono text-xs text-ink-primary">gcc</code>, <code class="font-mono text-xs text-ink-primary">clang</code>, or MSVC <code class="font-mono text-xs text-ink-primary">cl</code>), and CPython 3.11–3.13
+            with development headers and a shared Python library
             (e.g. <code class="font-mono text-xs text-ink-primary">uv python install 3.12</code>).
           </p>
 
@@ -226,7 +226,7 @@
           </div>
 
           <p class="text-xs leading-relaxed text-ink-muted font-mono">
-            pac doctor checks gcc, llvmlite, Python.h, and shared libpython before your first build.
+            pac doctor checks your C compiler (gcc/clang/cl), llvmlite, Python.h, and shared Python library before your first build.
           </p>
         </section>
 
@@ -448,8 +448,8 @@
           <p class="text-sm leading-relaxed text-ink-secondary">
             To deploy a <code class="font-mono text-xs text-ink-primary">.paw</code>-enabled binary to another machine,
             build with <code class="font-mono text-xs text-ink-primary">--relocatable</code> and bundle
-            <code class="font-mono text-xs text-ink-primary">libpython</code> + trimmed stdlib next to the executable
-            (found automatically via <code class="font-mono text-xs text-ink-primary">$ORIGIN</code> rpath).
+            Python's shared library + trimmed stdlib next to the executable
+            (found automatically via <code class="font-mono text-xs text-ink-primary">$ORIGIN</code> on Linux, <code class="font-mono text-xs text-ink-primary">@loader_path</code> on macOS, or the app directory on Windows).
           </p>
 
           <div class="bg-surface border hairline rounded-md overflow-hidden">

@@ -16,7 +16,7 @@
 
 ## Installation & Minimal Example
 
-Requires Linux x86-64, CPython 3.11–3.13 (headers + shared `libpython`), and `gcc`.
+Requires Linux x86-64, macOS, or Windows x64, CPython 3.11–3.13 (headers + shared Python library), and a C compiler (`gcc`, `clang`, or MSVC `cl`).
 
 ```bash
 pip install pa-lang            # installs `pac`
@@ -87,13 +87,13 @@ pytest -q                          # run full compiler, runtime, LSP, doctor, an
 ## Status & Roadmap
 
 **Current (`v0.1.0` alpha):**
-- **Supported:** Linux x86-64, CPython 3.11–3.13, `gcc`, LLVM via `llvmlite`.
-- **Included:** zero-annotation `.pa` compiler (`i32`/`i64`/`u8`/`u32`/`u64`/`f32`/`f64`/`bool`, `@struct`, stack/RAII `Vec`, `String`, `libm`), `.paw` zero-copy CPython bridge with two-way customs, `--shared` guarded C-ABI libraries, `pac doctor` / `pac bundle`, `pac skill`, `pac lsp`, and VS Code extension.
+- **Supported:** Linux x86-64, macOS (arm64 / x86-64), Windows x64, CPython 3.11–3.13, `gcc` / `clang` / MSVC `cl`, LLVM via `llvmlite`.
+- **Included:** zero-annotation `.pa` compiler (`i32`/`i64`/`u8`/`u32`/`u64`/`f32`/`f64`/`bool`, `@struct`, stack/RAII `Vec`, `String`, `libm`), `.paw` zero-copy CPython bridge with two-way customs, `--shared` guarded C-ABI libraries, `pac doctor` / `pac bundle` (ELF / Mach-O / PE), `pac skill`, `pac lsp`, and VS Code extension.
 
 **Planned:**
 - Nested `Vec` fields inside `@struct` with recursive RAII destructors.
 - `**` exponentiation operator and zero-copy string slicing (`str_view` spans).
-- macOS & Windows native toolchains and optional static `libpython` linking.
+- Optional static `libpython` linking for single-file self-contained binaries.
 - Standalone ecosystem packages (`pa-libs`) for common data, geometry, and parsing libraries.
 
 ---

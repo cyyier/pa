@@ -9,6 +9,7 @@ import threading
 import time
 from typing import Optional
 from urllib.parse import unquote, urlparse
+from urllib.request import url2pathname
 
 from .diagnostics import DiagnosticSink
 from .infer import FuncInfo, ModuleInfo, analyze
@@ -21,7 +22,12 @@ PAW_ICON_SIMPLE = "[🌉 .paw → {ret}]"         # default
 
 def uri_to_path(uri: str) -> str:
     p = urlparse(uri)
-    return unquote(p.path) if p.scheme == "file" else uri
+    if p.scheme != "file":
+        return uri
+    raw = unquote(p.path)
+    if len(raw) >= 3 and raw[0] == "/" and raw[2] == ":" and raw[1].isalpha():
+        return url2pathname(raw) if sys.platform == "win32" else raw[1:]
+    return url2pathname(raw)
 
 
 class DocAnalysis:

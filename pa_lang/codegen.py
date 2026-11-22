@@ -53,6 +53,11 @@ def is_agg(t: Type) -> bool:
     return isinstance(resolve(t), (FixedList, Vec, StackVec, StructT))
 
 
+def is_view(t: Type) -> bool:
+    r = resolve(t)
+    return isinstance(r, Span) or r == STR_VIEW
+
+
 def is_int(t: Type) -> bool:
     return t in INT_SCALARS
 
@@ -75,7 +80,7 @@ class ModuleGen:
         self.realloc = d("realloc", PTR, [PTR, I64T])
         self.free = d("free", VOIDT, [PTR])
         self.printf = d("printf", I32T, [PTR], True)
-        self.bcmp = d("bcmp", I32T, [PTR, PTR, I64T])
+        self.memcmp = d("memcmp", I32T, [PTR, PTR, I64T])
         self.rt_fault = d("pa_rt_fault", VOIDT, [PTR, PTR, I64T, PTR])
         self.rt_index_fault = d("pa_rt_index_fault", VOIDT, [I64T, I64T, I64T, PTR])
         self.p_i64 = d("pa_print_i64", VOIDT, [I64T])
@@ -157,9 +162,36 @@ class ModuleGen:
                 self.fns[n].return_value.add_attribute("zeroext")
         for n in names:
             FnGen(self, self.info.funcs[n], self.fns[n]).emit()
+        if self.shared:
+            for n in names:
+                fi = self.info.funcs[n]
+                if fi.exported:
+                    self.emit_abi_thunk(n, fi)
         if not self.shared:
             self.emit_c_main()
         return str(self.m)
+
+    def emit_abi_thunk(self, name: str, fi) -> None:
+        """Pointer-safe C-ABI thunk for @export functions (avoids >8B struct-by-value ABI differences)."""
+        ret_view = is_view(fi.ret)
+        pts = list(fi.params.values())
+        abi_params = ([PTR] if ret_view else []) + [PTR if is_view(t) else self.param_lt(t, fi.node) for t in pts]
+        abi_ret = VOIDT if ret_view else self.lt_ret(fi)
+        fn = ir.Function(self.m, ir.FunctionType(abi_ret, abi_params), f"pa_abi_{name}")
+        if abi_ret == I1:
+            fn.return_value.add_attribute("zeroext")
+        b = PBuilder(fn.append_basic_block("entry"))
+        args = list(fn.args)
+        out_ptr = args.pop(0) if ret_view else None
+        fwd = [b.load(a, typ=VIEW) if is_view(t) else a for a, t in zip(args, pts)]
+        res = b.call(self.fns[name], fwd)
+        if ret_view:
+            b.store(res, out_ptr)
+            b.ret_void()
+        elif abi_ret == VOIDT:
+            b.ret_void()
+        else:
+            b.ret(res)
 
     def lt_ret(self, fi) -> ir.Type:
         return VOIDT if fi.ret == VOID or fi.ret == UNKNOWN else self.lt(fi.ret, fi.node)
@@ -764,7 +796,7 @@ class FnGen:
         la, lb = b.extract_value(va, 1), b.extract_value(vb, 1)
         same_len = b.icmp_signed("==", la, lb)
         n = b.select(same_len, la, ci(0, I64T))
-        r = b.call(self.mg.bcmp, [b.extract_value(va, 0), b.extract_value(vb, 0), n])
+        r = b.call(self.mg.memcmp, [b.extract_value(va, 0), b.extract_value(vb, 0), n])
         eq = b.and_(same_len, b.icmp_signed("==", r, ci(0)))
         return b.xor(eq, ir.Constant(I1, 1)) if negate else eq
 

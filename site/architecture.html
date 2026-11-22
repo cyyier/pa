@@ -156,7 +156,7 @@
 
         <div class="mt-7 pt-5 border-t hairline space-y-2 font-mono text-[11px] text-ink-muted">
           <div class="flex items-center justify-between"><span>Version</span><span class="text-ink-secondary">0.1.0 (alpha)</span></div>
-          <div class="flex items-center justify-between"><span>Platform</span><span class="text-ink-secondary">Linux x86-64</span></div>
+          <div class="flex items-center justify-between"><span>Platform</span><span class="text-ink-secondary">Linux · macOS · Win</span></div>
           <div class="flex items-center justify-between"><span>CPython</span><span class="text-ink-secondary tabular-nums">3.11–3.13</span></div>
           <div class="flex items-center justify-between"><span>Backend</span><span class="text-ink-secondary">LLVM (llvmlite)</span></div>
         </div>
@@ -472,9 +472,9 @@
               <span class="text-ink-muted">&rarr;</span>
               <span class="px-2.5 py-1.5 rounded bg-canvas border hairline text-ink-primary">LLVM -O2 .o</span>
               <span class="text-ink-muted">&rarr;</span>
-              <span class="px-2.5 py-1.5 rounded bg-canvas border hairline text-accent">gcc link (+ runtime C)</span>
+              <span class="px-2.5 py-1.5 rounded bg-canvas border hairline text-accent">cc link (+ runtime C)</span>
               <span class="text-ink-muted">&rarr;</span>
-              <span class="px-2.5 py-1.5 rounded bg-accent text-canvas font-semibold">native bin / .so</span>
+              <span class="px-2.5 py-1.5 rounded bg-accent text-canvas font-semibold">native bin / shared lib</span>
             </div>
           </div>
 
@@ -490,9 +490,9 @@
                 <tr><td class="font-mono">pa_lang/paw.py</td><td><code class="ic">.paw</code> signature header parser and dev-mode deep static lint (<code class="ic">PA_E083</code>, <code class="ic">PA_E084</code>).</td></tr>
                 <tr><td class="font-mono">pa_lang/diagnostics.py</td><td>Structured JSON repair tickets and <code class="ic">PA_E030</code> <code class="ic">@struct</code> surgery engine.</td></tr>
                 <tr><td class="font-mono">pa_lang/codegen.py</td><td>llvmlite opaque-pointer IR emitter, bounds/div-zero/narrowing guards, RAII <code class="ic">free</code>, <code class="ic">.paw</code> marshaling stubs.</td></tr>
-                <tr><td class="font-mono">pa_lang/build.py</td><td>LLVM <code class="ic">-O2</code> object emission, <code class="ic">gcc</code> linking, <code class="ic">.paw</code> source embedding, guarded <code class="ic">@export</code> wrappers.</td></tr>
+                <tr><td class="font-mono">pa_lang/build.py</td><td>LLVM <code class="ic">-O2</code> object emission, cross-platform <code class="ic">gcc/clang/cl</code> linking, <code class="ic">.paw</code> embedding, guarded <code class="ic">@export</code> wrappers.</td></tr>
                 <tr><td class="font-mono">runtime_core.c / bridge.c</td><td>Always-linked core (faults, TLS <code class="ic">setjmp</code> guards, Python-repr <code class="ic">print</code>) + optional embedded CPython bridge.</td></tr>
-                <tr><td class="font-mono">doctor.py / skills_cmd.py / lsp_server.py</td><td>Pure-Python ELF inspector (<code class="ic">pac doctor</code>/<code class="ic">bundle</code>), <code class="ic">pac skill</code> installer, and auto-reloading <code class="ic">pygls</code> LSP server.</td></tr>
+                <tr><td class="font-mono">doctor.py / skills_cmd.py / lsp_server.py</td><td>Pure-Python ELF / Mach-O / PE inspector (<code class="ic">pac doctor</code>/<code class="ic">bundle</code>), <code class="ic">pac skill</code> installer, and <code class="ic">pygls</code> LSP server.</td></tr>
               </tbody>
             </table>
           </div>
@@ -537,8 +537,8 @@
               </thead>
               <tbody>
                 <tr><td class="font-mono">pac check [--ai-diagnostic] [--mode dev|prod] PATH…</td><td>Front-end checks on <code class="ic">.pa</code> and <code class="ic">.paw</code> files; exits 1 on errors.</td></tr>
-                <tr><td class="font-mono">pac build FILE [-o OUT] [--mode dev|prod] [--shared] [--relocatable] [--emit-ir]</td><td>Compile to a native binary, guarded <code class="ic">.so</code>, or LLVM IR.</td></tr>
-                <tr><td class="font-mono">pac doctor [BINARY]</td><td>Diagnose host toolchain or ELF <code class="ic">DT_NEEDED</code>/<code class="ic">RPATH</code> &amp; Python home of a built binary.</td></tr>
+                <tr><td class="font-mono">pac build FILE [-o OUT] [--mode dev|prod] [--shared] [--relocatable] [--emit-ir]</td><td>Compile to a native binary, guarded shared library (<code class="ic">.so</code>/<code class="ic">.dylib</code>/<code class="ic">.dll</code>), or LLVM IR.</td></tr>
+                <tr><td class="font-mono">pac doctor [BINARY]</td><td>Diagnose host toolchain or ELF / Mach-O / PE loader dependencies &amp; Python home of a built binary.</td></tr>
                 <tr><td class="font-mono">pac bundle BINARY [--dest D] [--with-stdlib]</td><td>Copy <code class="ic">libpython</code> (and optionally trimmed stdlib) next to a relocatable binary.</td></tr>
                 <tr><td class="font-mono">pac skill [NAME] [--list] [--install TARGET] [--global] [-o FILE]</td><td>Print or idempotently install bundled AI <code class="ic">SKILL.md</code> files (<code class="ic">claude</code>, <code class="ic">cursor</code>, <code class="ic">codex</code>, <code class="ic">copilot</code>, <code class="ic">antigravity</code>).</td></tr>
                 <tr><td class="font-mono">pac lsp</td><td>Language server over stdio with <code class="ic">simple</code>/<code class="ic">detailed</code> inlay hints, hover memory audit cards, and auto-reload.</td></tr>
@@ -581,7 +581,7 @@
           <div class="bg-surface border hairline rounded-md overflow-hidden">
             <pre class="p-4 font-mono text-[12px] leading-[1.65] overflow-x-auto text-ink-secondary"><code><span class="text-ink-primary">pa/</span>
 ├── pyproject.toml            package metadata (entry point: pac = pa_lang.cli:main)
-├── pa_lang/                  compiler, C runtimes, ELF doctor, LSP, bundled skills
+├── pa_lang/                  compiler, C runtimes, ELF/Mach-O/PE doctor, LSP, bundled skills
 ├── skills/                   pa-coder · py-to-pa · cpp-to-pa
 ├── vscode-pa/                VS Code extension (TextMate grammar, client, tests)
 ├── site/                     palang.dev (index, quickstart, architecture)
@@ -604,7 +604,7 @@
             <div class="bg-surface border hairline rounded-md p-4 space-y-2">
               <div class="font-mono text-ink-primary font-semibold">Current limits (v0.1.0)</div>
               <ul class="text-ink-secondary space-y-1.5 list-disc pl-4 leading-relaxed">
-                <li>Linux x86-64 build target (<code class="ic">pac check</code> / <code class="ic">lsp</code> / <code class="ic">--emit-ir</code> are platform-independent).</li>
+                <li>Linux x86-64, macOS (arm64 / x86-64), and Windows x64 build targets.</li>
                 <li>No string slicing; <code class="ic">.paw</code> cannot return strings or structs; <code class="ic">@struct</code> fields cannot be <code class="ic">Vec</code> yet.</li>
                 <li>Helpers are monomorphic over container layouts (do not mix stack <code class="ic">FixedList</code> and heap <code class="ic">Vec</code> at the same parameter).</li>
                 <li>No <code class="ic">**</code>, <code class="ic">dict</code>/<code class="ic">set</code>/<code class="ic">tuple</code>, closures, generators, or <code class="ic">try/except</code>.</li>
@@ -615,7 +615,7 @@
               <ul class="text-ink-secondary space-y-1.5 list-disc pl-4 leading-relaxed">
                 <li>Nested <code class="ic">Vec</code> fields inside <code class="ic">@struct</code> with automatic recursive RAII destructors.</li>
                 <li>Generic <code class="ic">**</code> operator and string slicing as zero-copy <code class="ic">str_view</code> spans.</li>
-                <li>macOS and Windows native toolchains + optional static <code class="ic">libpython</code> linking.</li>
+                <li>Optional static <code class="ic">libpython</code> linking for single-file self-contained binaries.</li>
                 <li>Recursion-depth guard and standalone ecosystem packages (<code class="ic">pa-libs</code>).</li>
               </ul>
             </div>

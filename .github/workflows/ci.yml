@@ -7,19 +7,32 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11", "3.12", "3.13"]
+        include:
+          - os: ubuntu-latest
+            python: "3.11"
+          - os: ubuntu-latest
+            python: "3.12"
+          - os: ubuntu-latest
+            python: "3.13"
+          - os: macos-latest
+            python: "3.12"
+          - os: windows-latest
+            python: "3.12"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - name: Setup MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
       - name: Toolchain check
         run: |
-          python -m pip install -e ".[dev,web]" numpy pillow
+          python -m pip install -e ".[dev]" numpy pillow
           pac doctor
       - name: Tests
         run: pytest -q
@@ -48,5 +61,7 @@ jobs:
       - run: python -m pip install build twine
       - run: python -m build
       - run: twine check dist/*
-      - name: Wheel ships the C runtime
-        run: python -m zipfile -l dist/*.whl | grep -E "runtime_(bridge|core)\.c"
+      - name: Wheel ships the C runtime and AI skills
+        run: |
+          python -m zipfile -l dist/*.whl | grep -E "runtime_(bridge|core)\.c"
+          python -m zipfile -l dist/*.whl | grep -E "SKILL\.md"

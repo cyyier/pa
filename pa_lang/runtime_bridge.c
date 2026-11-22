@@ -4,6 +4,7 @@
  * In-bound  (PY_TO_PA_OUT): None / NaN / Inf / type drift / range overflow are rejected.
  * Any violation writes pa_boundary_fault.json (with the full In snapshot) and exits(70).
  */
+#define _CRT_SECURE_NO_WARNINGS
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <math.h>
@@ -13,10 +14,35 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#define PA_PATH_SEP ";"
+#if !defined(S_ISDIR) && defined(_S_IFDIR)
+#define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
+#endif
+#else
 #include <unistd.h>
+#define PA_PATH_SEP ":"
+#endif
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
+#ifdef _MSC_VER
+#define PA_TLS __declspec(thread)
+#define PA_STRDUP _strdup
+#else
+#define PA_TLS __thread
+#define PA_STRDUP strdup
+#endif
 
 #ifndef PA_MODE
+#if defined(PA_MODE_PROD) && PA_MODE_PROD
+#define PA_MODE "prod"
+#else
 #define PA_MODE "dev"
+#endif
 #endif
 #ifndef PA_DEEP_CHECKS
 #define PA_DEEP_CHECKS 1      /* dev: element-wise NaN/Inf scans of buffers; prod: 0 */
@@ -40,8 +66,8 @@ void pa_set_fault_hook(void (*hook)(void));
 
 static PyObject *g_bridge = NULL;
 /* GIL bookkeeping so a fault can release the GIL before unwinding (shared libs longjmp out). */
-static __thread int g_gil_held = 0;
-static __thread PyGILState_STATE g_gil_state;
+static PA_TLS int g_gil_held = 0;
+static PA_TLS PyGILState_STATE g_gil_state;
 static void release_gil_hook(void) {
     if (g_gil_held) { g_gil_held = 0; PyGILState_Release(g_gil_state); }
 }
@@ -179,11 +205,23 @@ static const char PRELUDE[] =
 #endif
 
 typedef struct { const char *name; const char *src; } PaEmbed;
-extern const PaEmbed pa_embedded_paw[] __attribute__((weak));
+extern const PaEmbed pa_embedded_paw[];
+extern const char pa_baked_pyhome[];
+extern const char pa_baked_pypath[];
 
 static int dir_exists(const char *p) {
+    if (!p || !*p) return 0;
+    char tmp[1100];
+    snprintf(tmp, sizeof tmp, "%s", p);
+    size_t n = strlen(tmp);
+    while (n > 1 && (tmp[n - 1] == '/' || tmp[n - 1] == '\\')) {
+#ifdef _WIN32
+        if (n == 3 && tmp[1] == ':') break;
+#endif
+        tmp[--n] = 0;
+    }
     struct stat st;
-    return p && *p && stat(p, &st) == 0 && S_ISDIR(st.st_mode);
+    return stat(tmp, &st) == 0 && S_ISDIR(st.st_mode);
 }
 
 /* Add `dir` to sys.path when it exists and is not there yet (front = take priority). */
@@ -198,16 +236,21 @@ static void add_path(PyObject *sys_path, const char *dir, int front) {
 
 static void add_path_list(PyObject *sys_path, const char *list, int front) {
     if (!list || !*list) return;
-    char *dup = strdup(list);
-    for (char *tok = strtok(dup, ":"); tok; tok = strtok(NULL, ":")) add_path(sys_path, tok, front);
+    char *dup = PA_STRDUP(list);
+    for (char *tok = strtok(dup, PA_PATH_SEP); tok; tok = strtok(NULL, PA_PATH_SEP)) add_path(sys_path, tok, front);
     free(dup);
 }
 
 static int has_stdlib(const char *home) {
     char p[1100];
-    snprintf(p, sizeof p, "%s/lib/python%d.%d/os.py", home, PY_MAJOR_VERSION, PY_MINOR_VERSION);
     struct stat st;
-    return stat(p, &st) == 0;
+    snprintf(p, sizeof p, "%s/lib/python%d.%d/os.py", home, PY_MAJOR_VERSION, PY_MINOR_VERSION);
+    if (stat(p, &st) == 0) return 1;
+#ifdef _WIN32
+    snprintf(p, sizeof p, "%s/Lib/os.py", home);
+    if (stat(p, &st) == 0) return 1;
+#endif
+    return 0;
 }
 
 /* PYTHONHOME choice: PA_PYTHON_HOME > PYTHONHOME (left to CPython) > <exe dir>/python-home > build-time default. */
@@ -216,10 +259,21 @@ static const char *choose_home(const char *baked, char *buf, size_t cap) {
     if (e && *e) return e;
     if (getenv("PYTHONHOME")) return NULL;
     char exe[900];
+    int got_exe = 0;
+#ifdef _WIN32
+    DWORD n = GetModuleFileNameA(NULL, exe, (DWORD)(sizeof exe - 1));
+    if (n > 0 && n < sizeof exe - 1) { exe[n] = 0; got_exe = 1; }
+#elif defined(__APPLE__)
+    uint32_t sz = (uint32_t)(sizeof exe - 1);
+    if (_NSGetExecutablePath(exe, &sz) == 0) { exe[sizeof exe - 1] = 0; got_exe = 1; }
+#else
     ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
-    if (n > 0) {
-        exe[n] = 0;
+    if (n > 0) { exe[n] = 0; got_exe = 1; }
+#endif
+    if (got_exe) {
         char *slash = strrchr(exe, '/');
+        char *bslash = strrchr(exe, '\\');
+        if (bslash && (!slash || bslash > slash)) slash = bslash;
         if (slash) {
             *slash = 0;
             snprintf(buf, cap, "%s/python-home", exe);
@@ -234,9 +288,9 @@ static void startup_fault(const char *what, const char *home) {
     char msg[1500], summary[1600];
     snprintf(msg, sizeof msg,
              "cannot start the embedded Python runtime: %s (home: %s). Fix: set PA_PYTHON_HOME to a Python prefix that contains "
-             "lib/python%d.%d, or ship one next to the binary with `pac bundle <binary> --with-stdlib`; "
+             "the standard library, or ship one next to the binary with `pac bundle <binary> --with-stdlib`; "
              "run `pac doctor <binary>` to diagnose.",
-             what, home ? home : "<default>", PY_MAJOR_VERSION, PY_MINOR_VERSION);
+             what, home ? home : "<default>");
     SB b = {0};
     sb_printf(&b, "{\n  \"mode\": \"%s\",\n  \"direction\": \"STARTUP\",\n  \"worker\": \"python-runtime\",\n  \"violation\": ", PA_MODE);
     sb_json_str(&b, msg, strlen(msg));
@@ -247,7 +301,7 @@ static void startup_fault(const char *what, const char *home) {
 
 /* Python location is resolved at run time, in priority order:
  *   home : PA_PYTHON_HOME > PYTHONHOME > <exe dir>/python-home (pac bundle) > build-time default (only if it has a stdlib)
- *   path : PA_PYPATH > $VIRTUAL_ENV/lib/pythonX.Y/site-packages > build-time defaults (only entries that exist)
+ *   path : PA_PYPATH > $VIRTUAL_ENV/site-packages > build-time defaults (only entries that exist)
  *   .paw : PA_PATH directories (live-edit override) > sources embedded in the binary                      */
 void pa_bridge_init(const char *pyhome, const char *pypath) {
     if (g_bridge) return;
@@ -278,6 +332,10 @@ void pa_bridge_init(const char *pyhome, const char *pypath) {
         const char *venv = getenv("VIRTUAL_ENV");
         if (venv && *venv) {
             char sp[1024];
+#ifdef _WIN32
+            snprintf(sp, sizeof sp, "%s/Lib/site-packages", venv);
+            add_path(sys_path, sp, 0);
+#endif
             snprintf(sp, sizeof sp, "%s/lib/python%d.%d/site-packages", venv, PY_MAJOR_VERSION, PY_MINOR_VERSION);
             add_path(sys_path, sp, 0);
         }
@@ -287,22 +345,19 @@ void pa_bridge_init(const char *pyhome, const char *pypath) {
     PyObject *dirs = PyDict_GetItemString(d, "PAW_DIRS");
     const char *env = getenv("PA_PATH");
     if (env && *env) {
-        char *e2 = strdup(env);
-        for (char *tok = strtok(e2, ":"); tok; tok = strtok(NULL, ":")) {
+        char *e2 = PA_STRDUP(env);
+        for (char *tok = strtok(e2, PA_PATH_SEP); tok; tok = strtok(NULL, PA_PATH_SEP)) {
             PyObject *s = PyUnicode_FromString(tok);
             PyList_Append(dirs, s);
             Py_DECREF(s);
         }
         free(e2);
     }
-    PyObject *embedded = PyDict_GetItemString(d, "EMBEDDED");
-    if (pa_embedded_paw) {
-        for (const PaEmbed *e = pa_embedded_paw; e->name; e++) {
-            PyObject *src = PyUnicode_DecodeUTF8(e->src, (Py_ssize_t)strlen(e->src), "strict");
-            if (!src) { PyErr_Print(); exit(70); }
-            PyDict_SetItemString(embedded, e->name, src);
-            Py_DECREF(src);
-        }
+    for (const PaEmbed *e = pa_embedded_paw; e->name; e++) {
+        PyObject *src = PyUnicode_DecodeUTF8(e->src, (Py_ssize_t)strlen(e->src), "strict");
+        if (!src) { PyErr_Print(); exit(70); }
+        PyDict_SetItemString(PyDict_GetItemString(d, "EMBEDDED"), e->name, src);
+        Py_DECREF(src);
     }
     PyGILState_Release(g);
 }
@@ -464,7 +519,7 @@ void pa_call_paw(const char *mod, const char *fn, PaArg *args, int32_t nargs, in
     int allow_nan = flags & 1;
     snprintf(worker, sizeof worker, "%s.%s", mod, fn);
     check_out(worker, args, nargs, allow_nan);
-    if (!g_bridge) pa_bridge_init(PA_PYHOME, PA_PYPATH);
+    if (!g_bridge) pa_bridge_init(pa_baked_pyhome, pa_baked_pypath);
     pa_set_fault_hook(release_gil_hook);
     PyGILState_STATE g = PyGILState_Ensure();
     g_gil_state = g;
