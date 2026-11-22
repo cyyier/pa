@@ -5,17 +5,7 @@ Python-syntax, C++-memory-layout, LLVM-compiled systems language. `*.pa` files c
 AI skills: [skills/](https://github.com/cyyier/pa/tree/main/skills). Homepage: <https://palang.dev>.
 
 ## Quick start
-Requirements: Linux, CPython 3.11-3.13 with headers and a shared `libpython` (e.g. `uv python install 3.12`), `gcc`.
-```bash
-pip install pa-lang                # provides `pac`   (from a checkout: pip install -e ".[dev]")
-pac doctor                         # verifies the toolchain on this machine
-pac check --ai-diagnostic examples # JSON repair tickets for AI agents
-pac build examples/pipeline_demo/main.pa -o demo && ./demo
-pac build examples/hashlib_pa/main.pa --mode prod -o hash_demo && ./hash_demo
-pac build examples/raytracer/main.pa --mode prod -o rt_demo && ./rt_demo
-pac build lib.pa --shared -o lib.so     # @export functions as a C-ABI shared library
-```
-`--mode dev` (default): deep `.paw` lint, bounds checks, full boundary customs. `--mode prod`: lean runtime.
+See the full Quick Start guide at <https://palang.dev/quickstart>.
 
 ## Where things live at run time (no hard-coded source paths)
 * **`.paw` sources are embedded in the binary** at build time — move or delete the source tree freely.
