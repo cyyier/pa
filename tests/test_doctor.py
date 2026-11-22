@@ -97,9 +97,12 @@ def test_pac_bundle_makes_the_binary_start_without_environment(tmp_path, capsys)
     assert (deploy / SONAME).is_file()
     assert "libpython alone is not enough" in capsys.readouterr().out
     assert doctor.check_binary(moved, env={}).ok                                      # the loader is satisfied now
-    # ... but a --relocatable binary still needs a Python home: friendly fault instead of a crash
+    # Without --with-stdlib: either the host still has libpython's compiled-in prefix (rc 0)
+    # or (e.g. uv / clean target machine) we get a friendly STARTUP fault (rc 70) instead of a crash.
     r = subprocess.run([moved], capture_output=True, text=True, env=clean_env(), cwd=deploy)
-    assert r.returncode == 70 and "cannot start the embedded Python runtime" in r.stderr and "--with-stdlib" in r.stderr
+    assert (r.returncode == 0 and r.stdout.strip() == "20.0") or (
+        r.returncode == 70 and "cannot start the embedded Python runtime" in r.stderr and "--with-stdlib" in r.stderr
+    ), (r.returncode, r.stdout, r.stderr)
     r = subprocess.run([moved], capture_output=True, text=True, cwd=deploy, env=clean_env(PA_PYTHON_HOME=sys.base_prefix))
     assert r.returncode == 0 and r.stdout.strip() == "20.0", r.stderr
     assert pac(["bundle", moved]) == 0                          # idempotent
