@@ -1,7 +1,7 @@
 # Pa
 
 Python-syntax, C++-memory-layout, LLVM-compiled systems language. `*.pa` files compile to native code;
-`*.paw` files are plain Python "crossing zones" with locked `In -> Out` signatures. Full spec: [ARCHITECTURE.md](https://github.com/cyyier/pa/blob/main/ARCHITECTURE.md);
+`*.paw` files are plain Python "crossing zones" with locked `In -> Out` signatures. Full spec: <https://palang.dev/architecture>;
 AI skills: [skills/](https://github.com/cyyier/pa/tree/main/skills). Homepage: <https://palang.dev>.
 
 ## Quick start
