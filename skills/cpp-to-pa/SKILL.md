@@ -14,13 +14,14 @@ description: Modernise legacy C++ into pure Pa (.pa) by mapping std::array/std::
 | `std::span<T>` | `span(arr, start, len)` |
 | `const T&` / `T&` | default read-only borrow / `mut(x)` at the call site |
 | `T*` + `new[]`/`delete[]` | `alloc(T, n)` / `free(p)` (exactly one free on every path) |
-| `int`/`long long`/`double`/`float`/`bool`/`uint8_t` | `i32`/`i64`/`f64`/`f32`/`bool`/`u8` |
+| `Node*` pool / intrusive list or tree | `Vec[Node]` + `int`/`i32` index Arena (`-1` for `nullptr`; immune to realloc invalidation) |
+| `int`/`long long`/`uint8_t`/`uint32_t`/`uint64_t`/`double`/`float`/`bool` | `i32`/`i64`/`u8`/`u32`/`u64`/`f64`/`f32`/`bool` |
 
 ## Comments
 Every non-obvious converted function (pointer arithmetic, bit tricks, manual memory, intentional narrow types, former macros) gets exactly one single-line `# ...` comment directly above its `def` stating the intent or the trap (≤ 100 chars); trivial functions get none.
 
 ## Safety differences to remember
-Pa bounds-checks indexes only in `--mode dev` (prod is C-like: no checks, negative indexes are out of range), traps integer division by zero in both modes, wraps 64-bit integer overflow like C, and never accepts a negative index as `len + i`. Do not rely on C++ undefined behaviour being preserved: it is reported as a fault instead.
+Pa bounds-checks indexes only in `--mode dev` (prod is C-like: no checks, negative indexes are out of range), traps integer division by zero in both modes, wraps 64-bit integer overflow like C, and never accepts a negative index as `len + i`. Do not rely on C++ undefined behaviour being preserved: it is reported as a fault instead. Also note that ternary `cond ? a : b` (`a if cond else b`) is scalar-only in Pa — convert struct/container ternaries to `if / else` assignments.
 
 ## Steps
 1. Inline or expand macros first; remove `goto`, exceptions, virtuals, templates (monomorphise by hand).

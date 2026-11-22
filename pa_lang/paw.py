@@ -10,11 +10,11 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from .diagnostics import DiagnosticSink
-from .types import (BOOL, F32, F64, I32, I64, STR_VIEW, U8, UNKNOWN, VOID, FixedList, Span, Type, Vec,
+from .types import (BOOL, F32, F64, I32, I64, STR_VIEW, U8, U32, U64, UNKNOWN, VOID, FixedList, Span, Type, Vec,
                     parse_annotation)
 
-NUMERIC = (I32, I64, U8, F32, F64, BOOL)
-ELEM_CODES = {"i32": 0, "i64": 1, "u8": 2, "f32": 3, "f64": 4, "bool": 5}
+NUMERIC = (I32, I64, U8, U32, U64, F32, F64, BOOL)
+ELEM_CODES = {"i32": 0, "i64": 1, "u8": 2, "f32": 3, "f64": 4, "bool": 5, "u32": 6, "u64": 7}
 
 
 @dataclass

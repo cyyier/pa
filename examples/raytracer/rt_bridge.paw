@@ -1,0 +1,52 @@
+"""Python crossing zone for Ray Tracer g++ -O3 verification and PIL PNG output."""
+import os
+import subprocess
+import time
+from PIL import Image
+
+
+def now_ms() -> float:
+    return time.perf_counter() * 1000.0
+
+
+def verify_vs_cpp_and_save(
+    rgb: list[u8],
+    w: int,
+    h: int,
+    spp: int,
+    pa_ms: float,
+    cpp_bin: str_view,
+    out_path: str_view,
+) -> int:
+    pa_rgb = bytes(rgb)
+    mrays = (w * h * spp) / 1e6
+    ok = True
+    if os.path.isfile(cpp_bin):
+        proc = subprocess.run([cpp_bin], capture_output=True, text=True, check=True)
+        cpp_ms = float(proc.stdout.strip())
+        with open("/tmp/ref_rt.rgb", "rb") as f:
+            cpp_rgb = f.read()
+        diffs = [abs(a - b) for a, b in zip(pa_rgb, cpp_rgb)]
+        max_diff = max(diffs)
+        exact_pct = 100.0 * sum(1 for d in diffs if d == 0) / len(diffs)
+        print(
+            f"Ray Tracer {w}x{h} x{spp} spp ({mrays:.2f}M primary rays): "
+            f"exact_channels={exact_pct:.2f}%, max_diff={max_diff}"
+        )
+        print(
+            f"Timing: Pa={pa_ms:.2f} ms ({mrays/(pa_ms/1000):.2f} Mrays/s) | "
+            f"g++ -O3={cpp_ms:.2f} ms ({mrays/(cpp_ms/1000):.2f} Mrays/s) -> ratio={pa_ms/cpp_ms:.2f}x"
+        )
+        ok = max_diff <= 1
+    else:
+        print(
+            f"Ray Tracer {w}x{h} x{spp} spp ({mrays:.2f}M primary rays): "
+            f"Pa={pa_ms:.2f} ms ({mrays/(pa_ms/1000):.2f} Mrays/s)"
+        )
+        print(f"Tip: compile C++ reference with `g++ -O3 examples/raytracer/ref_rt.cpp -o {cpp_bin}` for head-to-head check.")
+
+    img = Image.frombytes("RGB", (w, h), pa_rgb)
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    img.save(out_path)
+    print(f"Saved ray-traced PNG: {out_path} ({w}x{h})")
+    return 1 if ok else 0

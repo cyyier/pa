@@ -34,6 +34,8 @@ class Scalar(Type):
 I32 = Scalar("i32", 4, "int")
 I64 = Scalar("i64", 8, "int")
 U8 = Scalar("u8", 1, "int")
+U32 = Scalar("u32", 4, "int")
+U64 = Scalar("u64", 8, "int")
 F32 = Scalar("f32", 4, "float")
 F64 = Scalar("f64", 8, "float")
 BOOL = Scalar("bool", 1, "bool")
@@ -231,7 +233,7 @@ def resolve(t: Type) -> Type:
     return t
 
 
-SCALARS = {t.name: t for t in (I32, I64, U8, F32, F64, BOOL, VOID)}
+SCALARS = {t.name: t for t in (I32, I64, U8, U32, U64, F32, F64, BOOL, VOID)}
 SCALARS["str_view"] = STR_VIEW
 SCALARS["bytes_view"] = BYTES_VIEW
 SCALARS["int"] = I64          # Python-flavoured aliases of the default widths
@@ -258,7 +260,13 @@ def promote(a: Type, b: Type) -> Type:
         return F64
     if F32 in (a, b):
         return F32
-    return I64 if I64 in (a, b) else I32
+    if U64 in (a, b):
+        return U64
+    if I64 in (a, b):
+        return I64
+    if U32 in (a, b):
+        return U32
+    return I32
 
 
 # ---------------------------------------------------------------------------

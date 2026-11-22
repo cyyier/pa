@@ -136,42 +136,6 @@ def test_string_loop_has_no_leak_growth(tmp_path):
     assert r.stdout.strip() == str(200000 * 16)
 
 
-# ---------------------------------------------------------------- FastAPI shell
-@pytest.fixture(scope="module")
-def web_client(tmp_path_factory):
-    pytest.importorskip("fastapi")
-    pytest.importorskip("httpx")
-    from fastapi.testclient import TestClient
-    shell = os.path.join(os.path.dirname(__file__), "..", "examples", "web_shell")
-    so = compile_pa(os.path.join(shell, "stats.pa"), out=str(tmp_path_factory.mktemp("web") / "libstats.so"),
-                    shared=True)
-    os.environ["PA_STATS_LIB"] = so
-    sys.path.insert(0, shell)
-    sys.modules.pop("app", None)
-    app_module = importlib.import_module("app")
-    yield TestClient(app_module.app)
-    sys.path.remove(shell)
-    sys.modules.pop("app", None)
-
-
-def test_web_stats_endpoint(web_client):
-    r = web_client.post("/stats", json={"values": [1.0, 2.0, 3.0, 4.0]})
-    assert r.status_code == 200
-    assert r.json() == {"mean": 2.5, "variance": 1.25}
-
-
-def test_web_smooth_and_trace(web_client):
-    r = web_client.post("/smooth", json={"values": [1, 2, 3, 4, 5], "window": 2})
-    assert r.json() == {"values": [1.5, 2.5, 3.5, 4.5]}
-    r = web_client.post("/trace", json={"rows": [[1, 2], [3, 4]]})
-    assert r.json() == {"trace": 5.0}
-
-
-def test_web_validation_errors_stay_in_python_shell(web_client):
-    assert web_client.post("/stats", json={"values": []}).status_code == 422
-    assert web_client.post("/smooth", json={"values": [1.0], "window": 5}).status_code == 422
-    assert web_client.post("/trace", json={"rows": [[1, 2]]}).status_code == 422
-
 
 # ---------------------------------------------------------------- compiler checks for the Skill rules
 from pa_lang.validator import check_source
@@ -445,15 +409,3 @@ def test_simple_display_names():
     assert simple_display(StrOwned()) == "str" and simple_display(STR_VIEW) == "str"
     assert [simple_display(t) for t in (I64, F64, I32, U8)] == ["int", "float", "i32", "u8"]
 
-
-def test_web_pa_fault_becomes_http_400_and_server_survives(web_client):
-    r = web_client.post("/ratio", json={"a": 7, "b": 2})
-    assert r.status_code == 200 and r.json() == {"ratio": 3}
-    r = web_client.post("/ratio", json={"a": 7, "b": 0})
-    assert r.status_code == 400 and r.json()["detail"]["pa_error"] == "ZeroDivisionError"
-    assert web_client.post("/ratio", json={"a": 9, "b": 3}).json() == {"ratio": 3}      # still alive and clean
-    r = web_client.post("/at", json={"values": [1.0, 2.0], "index": 5})
-    assert r.status_code == 400 and r.json()["detail"]["pa_error"] == "IndexError"
-    r = web_client.post("/at", json={"values": [1.0, 2.0], "index": -1})
-    assert r.status_code == 400                         # negative index is out of range by design
-    assert web_client.post("/at", json={"values": [1.0, 2.0], "index": 1}).json() == {"value": 2.0}

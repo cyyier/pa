@@ -26,14 +26,14 @@
 #endif
 
 enum { T_INT = 0, T_FLOAT = 1, T_BOOL = 2, T_STR = 3, T_BUF = 4, T_VOID = 5 };
-enum { E_I32 = 0, E_I64 = 1, E_U8 = 2, E_F32 = 3, E_F64 = 4, E_BOOL = 5 };
+enum { E_I32 = 0, E_I64 = 1, E_U8 = 2, E_F32 = 3, E_F64 = 4, E_BOOL = 5, E_U32 = 6, E_U64 = 7 };
 
 typedef struct { int32_t tag, elem; int64_t i; double f; void *p; int64_t n; } PaArg;
 typedef struct { int64_t i; double f; void *p; int64_t n; } PaRet;
 
-static const char *ELEM_NAME[] = {"i32", "i64", "u8", "f32", "f64", "bool"};
-static const char *ELEM_FMT[] = {"i", "q", "B", "f", "d", "?"};
-static const int ELEM_SIZE[] = {4, 8, 1, 4, 8, 1};
+static const char *ELEM_NAME[] = {"i32", "i64", "u8", "f32", "f64", "bool", "u32", "u64"};
+static const char *ELEM_FMT[] = {"i", "q", "B", "f", "d", "?", "I", "Q"};
+static const int ELEM_SIZE[] = {4, 8, 1, 4, 8, 1, 4, 8};
 
 void pa_fault_raise(const char *file_default, const char *summary, const char *json);
 void pa_set_fault_hook(void (*hook)(void));
@@ -84,6 +84,8 @@ static double elem_at(const PaArg *a, int64_t k) {
     case E_I32: return ((const int32_t *)p)[k];
     case E_I64: return (double)((const int64_t *)p)[k];
     case E_U8: return ((const uint8_t *)p)[k];
+    case E_U32: return ((const uint32_t *)p)[k];
+    case E_U64: return (double)((const uint64_t *)p)[k];
     case E_F32: return ((const float *)p)[k];
     case E_F64: return ((const double *)p)[k];
     default: return ((const uint8_t *)p)[k] != 0;
@@ -96,7 +98,10 @@ static void snapshot(SB *b, const PaArg *args, int nargs) {
     for (int i = 0; i < nargs; i++) {
         const PaArg *a = &args[i];
         sb_printf(b, "%s{\"index\":%d,", i ? "," : "", i);
-        if (a->tag == T_INT) sb_printf(b, "\"type\":\"%s\",\"value\":%lld}", ELEM_NAME[a->elem], (long long)a->i);
+        if (a->tag == T_INT) {
+            if (a->elem == E_U64) sb_printf(b, "\"type\":\"%s\",\"value\":%llu}", ELEM_NAME[a->elem], (unsigned long long)(uint64_t)a->i);
+            else sb_printf(b, "\"type\":\"%s\",\"value\":%lld}", ELEM_NAME[a->elem], (long long)a->i);
+        }
         else if (a->tag == T_FLOAT) { sb_printf(b, "\"type\":\"%s\",\"value\":", ELEM_NAME[a->elem]); sb_num(b, a->f); sb_printf(b, "}"); }
         else if (a->tag == T_BOOL) sb_printf(b, "\"type\":\"bool\",\"value\":%s}", a->i ? "true" : "false");
         else if (a->tag == T_STR) { sb_printf(b, "\"type\":\"str_view\",\"value\":"); sb_json_str(b, (const char *)a->p, a->p ? (size_t)a->n : 0); sb_printf(b, "}"); }
@@ -134,7 +139,7 @@ static const char PRELUDE[] =
     "class span(_Gen): pass\n"
     "class Vec(_Gen): pass\n"
     "class ptr(_Gen): pass\n"
-    "for _n in ('i32', 'i64', 'u8'): setattr(builtins, _n, int)\n"
+    "for _n in ('i32', 'i64', 'u8', 'u32', 'u64'): setattr(builtins, _n, int)\n"
     "for _n in ('f32', 'f64'): setattr(builtins, _n, float)\n"
     "builtins.allow_nan = lambda f: f\n"
     "builtins.str_view = str; builtins.bytes_view = bytes; builtins.void = type(None)\n"
@@ -330,7 +335,9 @@ static void check_out(const char *worker, const PaArg *args, int nargs, int allo
 static PyObject *build_arg(const PaArg *a) {
     static char dummy[8];
     switch (a->tag) {
-    case T_INT: return PyLong_FromLongLong(a->i);
+    case T_INT:
+        if (a->elem == E_U64) return PyLong_FromUnsignedLongLong((unsigned long long)(uint64_t)a->i);
+        return PyLong_FromLongLong(a->i);
     case T_FLOAT: return PyFloat_FromDouble(a->f);
     case T_BOOL: return PyBool_FromLong(a->i != 0);
     case T_STR: return PyUnicode_DecodeUTF8(a->p ? (const char *)a->p : "", a->p ? a->n : 0, "strict");
@@ -385,8 +392,18 @@ static void unbox_buffer(PyObject *o, int elem, PaRet *out, const char *worker, 
                 if (elem == E_F32) ((float *)out->p)[k] = (float)v; else ((double *)out->p)[k] = v;
             } else {
                 if (!PyLong_Check(it) || (PyBool_Check(it) && elem != E_BOOL)) IN_FAULT("return[%lld]: %s drifted from %s", (long long)k, Py_TYPE(it)->tp_name, ELEM_NAME[elem]);
-                long long v = PyLong_AsLongLong(it);
-                if (elem == E_I32) ((int32_t *)out->p)[k] = (int32_t)v; else if (elem == E_I64) ((int64_t *)out->p)[k] = v; else ((uint8_t *)out->p)[k] = (uint8_t)v;
+                if (elem == E_U64) {
+                    unsigned long long uv = PyLong_AsUnsignedLongLong(it);
+                    if (PyErr_Occurred()) { PyErr_Clear(); IN_FAULT("return[%lld]: integer out of range for u64", (long long)k); }
+                    ((uint64_t *)out->p)[k] = (uint64_t)uv;
+                } else {
+                    long long v = PyLong_AsLongLong(it);
+                    if (PyErr_Occurred()) { PyErr_Clear(); IN_FAULT("return[%lld]: integer out of range for %s", (long long)k, ELEM_NAME[elem]); }
+                    if (elem == E_I32) ((int32_t *)out->p)[k] = (int32_t)v;
+                    else if (elem == E_I64) ((int64_t *)out->p)[k] = v;
+                    else if (elem == E_U32) ((uint32_t *)out->p)[k] = (uint32_t)v;
+                    else ((uint8_t *)out->p)[k] = (uint8_t)v;
+                }
             }
         }
         Py_DECREF(seq);
@@ -414,13 +431,22 @@ static void unbox(PyObject *o, int ret_tag, int ret_elem, PaRet *out, const char
     } else if (ret_tag == T_INT) {
         if (PyBool_Check(o) || PyFloat_Check(o) || !(PyLong_Check(o) || PyIndex_Check(o)))
             IN_FAULT("return: %s drifted from %s", Py_TYPE(o)->tp_name, ELEM_NAME[ret_elem]);
-        int ovf = 0;
         PyObject *as_long = PyNumber_Index(o);
-        long long v = as_long ? PyLong_AsLongLongAndOverflow(as_long, &ovf) : 0;
-        Py_XDECREF(as_long);
-        if (ovf || (ret_elem == E_I32 && (v < INT32_MIN || v > INT32_MAX)) || (ret_elem == E_U8 && (v < 0 || v > 255)))
-            IN_FAULT("return: integer out of range for %s", ELEM_NAME[ret_elem]);
-        out->i = v;
+        if (ret_elem == E_U64) {
+            unsigned long long uv = as_long ? PyLong_AsUnsignedLongLong(as_long) : 0;
+            Py_XDECREF(as_long);
+            if (PyErr_Occurred()) { PyErr_Clear(); IN_FAULT("return: integer out of range for u64"); }
+            out->i = (int64_t)uv;
+        } else {
+            int ovf = 0;
+            long long v = as_long ? PyLong_AsLongLongAndOverflow(as_long, &ovf) : 0;
+            Py_XDECREF(as_long);
+            if (ovf || (ret_elem == E_I32 && (v < INT32_MIN || v > INT32_MAX))
+                    || (ret_elem == E_U32 && (v < 0 || v > UINT32_MAX))
+                    || (ret_elem == E_U8 && (v < 0 || v > 255)))
+                IN_FAULT("return: integer out of range for %s", ELEM_NAME[ret_elem]);
+            out->i = v;
+        }
     } else if (ret_tag == T_FLOAT) {
         if (PyBool_Check(o) || PyLong_Check(o) || PyComplex_Check(o) || !(PyFloat_Check(o) || PyNumber_Check(o)))
             IN_FAULT("return: %s drifted from %s", Py_TYPE(o)->tp_name, ELEM_NAME[ret_elem]);

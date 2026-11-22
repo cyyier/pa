@@ -11,7 +11,9 @@ pip install pa-lang                # provides `pac`   (from a checkout: pip inst
 pac doctor                         # verifies the toolchain on this machine
 pac check --ai-diagnostic examples # JSON repair tickets for AI agents
 pac build examples/pipeline_demo/main.pa -o demo && ./demo
-pac build lib.pa --shared -o lib.so     # @export functions for a Python/web shell (see examples/web_shell)
+pac build examples/hashlib_pa/main.pa --mode prod -o hash_demo && ./hash_demo
+pac build examples/raytracer/main.pa --mode prod -o rt_demo && ./rt_demo
+pac build lib.pa --shared -o lib.so     # @export functions as a C-ABI shared library
 ```
 `--mode dev` (default): deep `.paw` lint, bounds checks, full boundary customs. `--mode prod`: lean runtime.
 
@@ -43,7 +45,7 @@ Third-party packages (numpy, ...) are never bundled: provide them with `PA_PYPAT
 
 ## Tests
 ```bash
-pytest -q                          # compiler, codegen, LSP, web shell, hardening, relocation
+pytest -q                          # compiler, codegen, LSP, hardening, relocation
 (cd vscode-pa && npm test)         # TextMate grammar
 ```
 

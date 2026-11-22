@@ -87,6 +87,7 @@ void pa_rt_index_fault(int64_t idx, int64_t len, int64_t line, const char *func)
 
 /* ---- print helpers: Python-compatible formatting ------------------------------------------ */
 void pa_print_i64(int64_t v) { printf("%lld", (long long)v); }
+void pa_print_u64(uint64_t v) { printf("%llu", (unsigned long long)v); }
 void pa_print_bool(int v) { fputs(v ? "True" : "False", stdout); }
 void pa_print_str(const char *p, int64_t n) { if (n > 0) fwrite(p, 1, (size_t)n, stdout); }
 void pa_print_sep(void) { putchar(' '); }

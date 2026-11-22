@@ -13,8 +13,11 @@ from llvmlite import ir
 
 from .infer import FuncInferer, ModuleInfo, const_value, analyze
 from .paw import ELEM_CODES, PawFunc
-from .types import (BOOL, F32, F64, I32, I64, MATH_BINARY, MATH_UNARY, STR_VIEW, U8, UNKNOWN, VOID, FixedList, Ptr, Span, StackVec,
+from .types import (BOOL, F32, F64, I32, I64, MATH_BINARY, MATH_UNARY, STR_VIEW, U8, U32, U64, UNKNOWN, VOID, FixedList, Ptr, Span, StackVec,
                     StructT, Type, Vec, resolve, is_numeric, StrOwned, is_str, Scalar)
+
+UNSIGNED = (U8, U32, U64)
+INT_SCALARS = (I32, I64, U8, U32, U64)
 
 PTR = ir.PointerType()
 I1, I8, I32T, I64T = ir.IntType(1), ir.IntType(8), ir.IntType(32), ir.IntType(64)
@@ -51,7 +54,7 @@ def is_agg(t: Type) -> bool:
 
 
 def is_int(t: Type) -> bool:
-    return t in (I32, I64, U8)
+    return t in INT_SCALARS
 
 
 def ci(n: int, ty=I32T) -> ir.Constant:
@@ -76,6 +79,7 @@ class ModuleGen:
         self.rt_fault = d("pa_rt_fault", VOIDT, [PTR, PTR, I64T, PTR])
         self.rt_index_fault = d("pa_rt_index_fault", VOIDT, [I64T, I64T, I64T, PTR])
         self.p_i64 = d("pa_print_i64", VOIDT, [I64T])
+        self.p_u64 = d("pa_print_u64", VOIDT, [I64T])
         self.p_f64 = d("pa_print_f64", VOIDT, [F64T])
         self.p_bool = d("pa_print_bool", VOIDT, [I32T])
         self.p_str = d("pa_print_str", VOIDT, [PTR, I64T])
@@ -89,8 +93,8 @@ class ModuleGen:
     # ---- type lowering ----------------------------------------------
     def lt(self, t: Type, node=None) -> ir.Type:
         t = resolve(t)
-        if t == I32: return I32T
-        if t == I64: return I64T
+        if t in (I32, U32): return I32T
+        if t in (I64, U64): return I64T
         if t == U8: return I8
         if t == BOOL: return I1
         if t == F32: return F32T
@@ -167,7 +171,7 @@ class ModuleGen:
         r = b.call(self.fns["main"], [])
         if fi.ret in (VOID, UNKNOWN):
             b.ret(ci(0))
-        elif fi.ret in (I32, I64, U8, BOOL):
+        elif fi.ret in (I32, I64, U8, U32, U64, BOOL):
             w = r.type.width
             b.ret(r if w == 32 else b.trunc(r, I32T) if w > 32 else b.zext(r, I32T))
         else:
@@ -247,14 +251,14 @@ class FnGen:
         if not (isinstance(frm, Scalar) and isinstance(to, Scalar) and frm.kind == "int" and to.kind == "int"
                 and to.size < frm.size):
             return
-        lo, hi = (0, 255) if to == U8 else (-2**31, 2**31 - 1) if to == I32 else (None, None)
+        lo, hi = (0, 255) if to == U8 else (0, 2**32 - 1) if to == U32 else (-2**31, 2**31 - 1) if to == I32 else (None, None)
         cv = const_value(node, self.info.consts) if node is not None else None
         if cv is not None and lo is not None and not (lo <= cv <= hi):
             raise CodegenError(f"{what}: literal {cv} does not fit {to.name} ({lo}..{hi})", node)
         if not (always or self.mg.mode == "dev"):
             return
         t = self.b.trunc(v, self.lt(to))
-        back = self.b.zext(t, v.type) if to == U8 else self.b.sext(t, v.type)
+        back = self.b.zext(t, v.type) if to in (U8, U32) else self.b.sext(t, v.type)
         self.guard(self.b.icmp_signed("==", back, v), "OverflowError", f"{what}: value does not fit {to.name}", node)
 
     def terminated(self) -> bool:
@@ -631,12 +635,12 @@ class FnGen:
             return b.fcmp_ordered("!=", v, ir.Constant(v.type, 0.0)) if not fi_ else b.icmp_signed("!=", v, ir.Constant(v.type, 0))
         if fi_ and ti:
             if v.type.width < want.width:
-                return b.zext(v, want) if frm in (U8, BOOL) else b.sext(v, want)
+                return b.zext(v, want) if frm in (U8, U32, BOOL) else b.sext(v, want)
             return b.trunc(v, want)
         if fi_ and not ti:
-            return b.uitofp(v, want) if frm in (U8, BOOL) else b.sitofp(v, want)
+            return b.uitofp(v, want) if frm in (U8, U32, U64, BOOL) else b.sitofp(v, want)
         if not fi_ and ti:
-            return b.fptosi(v, want)
+            return b.fptoui(v, want) if to in UNSIGNED else b.fptosi(v, want)
         return b.fpext(v, want) if want == F64T else b.fptrunc(v, want)
 
     def binop_type(self, a: Type, b: Type, op) -> Type:
@@ -654,21 +658,24 @@ class FnGen:
         if isinstance(op, ast.FloorDiv):
             if fl:
                 self.err("float // is not supported", node)
-            return self.int_divmod(l, r, node, True)
+            return self.int_divmod(l, r, node, True, unsigned=(t in UNSIGNED))
         if isinstance(op, ast.Mod):
-            return b.frem(l, r) if fl else self.int_divmod(l, r, node, False)
+            return b.frem(l, r) if fl else self.int_divmod(l, r, node, False, unsigned=(t in UNSIGNED))
         if fl:
             self.err(f"operator {type(op).__name__} on floats is not supported", node)
-        for cls, f in ((ast.BitAnd, b.and_), (ast.BitOr, b.or_), (ast.BitXor, b.xor), (ast.LShift, b.shl), (ast.RShift, b.ashr)):
+        rshift = b.lshr if t in UNSIGNED else b.ashr
+        for cls, f in ((ast.BitAnd, b.and_), (ast.BitOr, b.or_), (ast.BitXor, b.xor), (ast.LShift, b.shl), (ast.RShift, rshift)):
             if isinstance(op, cls):
                 return f(l, r)
         self.err(f"operator {type(op).__name__} is not supported", node)
 
-    def int_divmod(self, l, r, node, is_div: bool):
+    def int_divmod(self, l, r, node, is_div: bool, unsigned: bool = False):
         """Integer // and %: divisor 0 raises ZeroDivisionError; x // -1 and x % -1 cannot trap on INT_MIN."""
         b = self.b
         self.guard(b.icmp_signed("!=", r, ir.Constant(r.type, 0)), "ZeroDivisionError",
                    "integer division or modulo by zero", node)
+        if unsigned:
+            return b.udiv(l, r) if is_div else b.urem(l, r)
         m1 = b.icmp_signed("==", r, ir.Constant(r.type, -1))
         safe = b.select(m1, ir.Constant(r.type, 1), r)
         if is_div:
@@ -747,6 +754,8 @@ class FnGen:
             self.err("unsupported comparison operator", e)
         if t in (F32, F64):
             return self.b.fcmp_ordered(name, l, r) if name != "!=" else self.b.fcmp_unordered("!=", l, r)
+        if t in (U8, U32, U64, BOOL):
+            return self.b.icmp_unsigned(name, l, r)
         return self.b.icmp_signed(name, l, r)
 
     def str_equal(self, a, bnode, negate: bool):
@@ -821,13 +830,22 @@ class FnGen:
         return n
 
     def i_int(self, e): return self.coerce(self.value(e.args[0]), self.ty(e.args[0]), I64)
+    def i_i64(self, e): return self.coerce(self.value(e.args[0]), self.ty(e.args[0]), I64)
+    def i_i32(self, e): return self.coerce(self.value(e.args[0]), self.ty(e.args[0]), I32)
+    def i_u8(self, e): return self.coerce(self.value(e.args[0]), self.ty(e.args[0]), U8)
+    def i_u32(self, e): return self.coerce(self.value(e.args[0]), self.ty(e.args[0]), U32)
+    def i_u64(self, e): return self.coerce(self.value(e.args[0]), self.ty(e.args[0]), U64)
     def i_float(self, e): return self.coerce(self.value(e.args[0]), self.ty(e.args[0]), F64)
+    def i_f64(self, e): return self.coerce(self.value(e.args[0]), self.ty(e.args[0]), F64)
+    def i_f32(self, e): return self.coerce(self.value(e.args[0]), self.ty(e.args[0]), F32)
     def i_bool(self, e): return self.cond(e.args[0])
     def i_mut(self, e): return self.value(e.args[0])
 
     def i_abs(self, e):
         t = self.ty(e.args[0])
         v = self.value(e.args[0])
+        if t in UNSIGNED:
+            return v
         neg = self.b.fneg(v) if t in (F32, F64) else self.b.neg(v)
         lt0 = self.b.fcmp_ordered("<", v, ir.Constant(v.type, 0.0)) if t in (F32, F64) else self.b.icmp_signed("<", v, ir.Constant(v.type, 0))
         return self.b.select(lt0, neg, v)
@@ -837,7 +855,12 @@ class FnGen:
         vals = [self.coerce(self.value(a), self.ty(a), t) for a in e.args]
         out = vals[0]
         for v in vals[1:]:
-            c = self.b.fcmp_ordered(op, v, out) if t in (F32, F64) else self.b.icmp_signed(op, v, out)
+            if t in (F32, F64):
+                c = self.b.fcmp_ordered(op, v, out)
+            elif t in UNSIGNED:
+                c = self.b.icmp_unsigned(op, v, out)
+            else:
+                c = self.b.icmp_signed(op, v, out)
             out = self.b.select(c, v, out)
         return out
 
@@ -885,7 +908,9 @@ class FnGen:
                 b.call(mg.p_bool, [b.zext(self.value(a), I32T)])
             elif t in (F32, F64):
                 b.call(mg.p_f64, [self.coerce(self.value(a), t, F64)])
-            elif t in (I64, I32, U8):
+            elif t == U64:
+                b.call(mg.p_u64, [self.value(a)])
+            elif t in (I64, I32, U8, U32):
                 b.call(mg.p_i64, [self.coerce(self.value(a), t, I64)])
             else:
                 self.err(f"print() cannot print a value of type {t.fmt()}", e)
@@ -954,7 +979,8 @@ class FnGen:
             elif pt in (F32, F64):
                 vals = (TAG_FLOAT, elem, 0, self.coerce(v, pt, F64), None, 0)
             else:
-                vals = (TAG_INT, elem, v if pt == I64 else (b.zext(v, I64T) if pt == U8 else b.sext(v, I64T)), 0.0, None, 0)
+                iv = v if pt in (I64, U64) else (b.zext(v, I64T) if pt in (U8, U32) else b.sext(v, I64T))
+                vals = (TAG_INT, elem, iv, 0.0, None, 0)
         tys = (I32T, I32T, I64T, F64T, PTR, I64T)
         for i, (v, ty) in enumerate(zip(vals, tys)):
             if not isinstance(v, ir.Value):
@@ -977,7 +1003,7 @@ class FnGen:
         v = fld(0, I64T)
         if t == BOOL:
             return b.icmp_signed("!=", v, ci(0, I64T))
-        return v if t == I64 else b.trunc(v, self.lt(t))
+        return v if t in (I64, U64) else b.trunc(v, self.lt(t))
 
     # ---- addresses (aggregates & lvalues) ----------------------------
     def addr(self, e) -> ir.Value:

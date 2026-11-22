@@ -1,0 +1,122 @@
+"""Python crossing zone for CRC-32 & SHA-256 verification and benchmarking."""
+import hashlib
+import math
+import time
+import zlib
+
+MASK32 = 0xFFFFFFFF
+
+
+def _rotr32(x: int, n: int) -> int:
+    return ((x >> n) | ((x << (32 - n)) & MASK32)) & MASK32
+
+
+def _py_crc32(data: bytes) -> int:
+    table = []
+    for i in range(256):
+        c = i
+        for _ in range(8):
+            c = (0xEDB88320 ^ (c >> 1)) if (c & 1) else (c >> 1)
+        table.append(c)
+    crc = MASK32
+    for b in data:
+        crc = table[(crc ^ b) & 0xFF] ^ (crc >> 8)
+    return crc ^ MASK32
+
+
+def _py_sha256_words(data: bytes) -> list[int]:
+    primes = []
+    cand = 2
+    while len(primes) < 64:
+        if all(cand % d != 0 for d in range(2, int(cand**0.5) + 1)):
+            primes.append(cand)
+        cand += 1
+    k = [int(((p ** (1.0 / 3.0)) % 1.0) * (1 << 32)) & MASK32 for p in primes]
+    state = [int((math.sqrt(p) % 1.0) * (1 << 32)) & MASK32 for p in primes[:8]]
+
+    n = len(data)
+    rem = (n + 9) % 64
+    pad_zeros = 0 if rem == 0 else (64 - rem)
+    padded = data + b"\x80" + (b"\x00" * pad_zeros) + (n * 8).to_bytes(8, "big")
+
+    for off in range(0, len(padded), 64):
+        w = [int.from_bytes(padded[off + i * 4 : off + i * 4 + 4], "big") for i in range(16)]
+        for i in range(16, 64):
+            x, y = w[i - 15], w[i - 2]
+            s0 = _rotr32(x, 7) ^ _rotr32(x, 18) ^ (x >> 3)
+            s1 = _rotr32(y, 17) ^ _rotr32(y, 19) ^ (y >> 10)
+            w.append((w[i - 16] + s0 + w[i - 7] + s1) & MASK32)
+        a, b, c, d, e, f, g, h = state
+        for i in range(64):
+            s1 = _rotr32(e, 6) ^ _rotr32(e, 11) ^ _rotr32(e, 25)
+            ch = (e & f) ^ ((~e & MASK32) & g)
+            t1 = (h + s1 + ch + k[i] + w[i]) & MASK32
+            s0 = _rotr32(a, 2) ^ _rotr32(a, 13) ^ _rotr32(a, 22)
+            maj = (a & b) ^ (a & c) ^ (b & c)
+            t2 = (s0 + maj) & MASK32
+            h, g, f, e, d, c, b, a = g, f, e, (d + t1) & MASK32, c, b, a, (t1 + t2) & MASK32
+        state = [(s + v) & MASK32 for s, v in zip(state, (a, b, c, d, e, f, g, h))]
+    return state
+
+
+def now_ms() -> float:
+    return time.perf_counter() * 1000.0
+
+
+def verify_vector(
+    data: list[u8],
+    pa_crc: int,
+    pa_sha: list[int],
+) -> int:
+    raw = bytes(data)
+    exp_crc = zlib.crc32(raw) & MASK32
+    exp_hex = hashlib.sha256(raw).hexdigest()
+    got_hex = "".join(f"{w:08x}" for w in pa_sha)
+    ok = (pa_crc == exp_crc) and (got_hex == exp_hex)
+    if not ok:
+        print(f"MISMATCH len={len(raw)}:")
+        print(f"  CRC32:  got={pa_crc:08x} exp={exp_crc:08x}")
+        print(f"  SHA256: got={got_hex}")
+        print(f"          exp={exp_hex}")
+    return 1 if ok else 0
+
+
+def bench_python_and_report(
+    data: list[u8],
+    crc_iters: int,
+    sha_iters: int,
+    pa_crc_ms: float,
+    pa_sha_ms: float,
+) -> int:
+    raw = bytes(data)
+
+    # Pure Python CRC-32 (scale down if needed to keep test fast)
+    py_crc_iters = max(1, crc_iters // 5)
+    t0 = time.perf_counter()
+    for _ in range(py_crc_iters):
+        _py_crc32(raw)
+    py_crc_ms = (time.perf_counter() - t0) * 1000.0 * (crc_iters / py_crc_iters)
+
+    # Pure Python SHA-256
+    py_sha_iters = max(1, sha_iters // 5)
+    t0 = time.perf_counter()
+    for _ in range(py_sha_iters):
+        _py_sha256_words(raw)
+    py_sha_ms = (time.perf_counter() - t0) * 1000.0 * (sha_iters / py_sha_iters)
+
+    # C stdlib (zlib / hashlib OpenSSL)
+    t0 = time.perf_counter()
+    for _ in range(crc_iters):
+        zlib.crc32(raw)
+    c_crc_ms = (time.perf_counter() - t0) * 1000.0
+
+    t0 = time.perf_counter()
+    for _ in range(sha_iters):
+        hashlib.sha256(raw).digest()
+    c_sha_ms = (time.perf_counter() - t0) * 1000.0
+
+    mb_crc = (len(raw) * crc_iters) / (1024 * 1024)
+    mb_sha = (len(raw) * sha_iters) / (1024 * 1024)
+    print(f"CRC-32  ({mb_crc:.1f} MB): Pa={pa_crc_ms:.2f} ms ({mb_crc/(pa_crc_ms/1000):.1f} MB/s) | PurePy={py_crc_ms:.1f} ms ({py_crc_ms/pa_crc_ms:.1f}x) | C-zlib={c_crc_ms:.2f} ms")
+    print(f"SHA-256 ({mb_sha:.1f} MB): Pa={pa_sha_ms:.2f} ms ({mb_sha/(pa_sha_ms/1000):.1f} MB/s) | PurePy={py_sha_ms:.1f} ms ({py_sha_ms/pa_sha_ms:.1f}x) | C-OpenSSL={c_sha_ms:.2f} ms")
+    return 0

@@ -1,0 +1,263 @@
+import rt_bridge
+
+# Port of C++ "Ray Tracing in One Weekend" using flat @struct Vec3/Sphere + u64 xorshift64*.
+IMG_W = 400
+IMG_H = 225
+SPP = 24
+MAX_DEPTH = 8
+
+
+@struct
+class Vec3:
+    x: float
+    y: float
+    z: float
+
+
+@struct
+class Sphere:
+    center: Vec3
+    radius: float
+    mat: int
+    albedo: Vec3
+    param: float
+
+
+@struct
+class Rng:
+    s: u64
+
+
+@struct
+class RayState:
+    ro: Vec3
+    rd: Vec3
+    atten: Vec3
+    alive: int
+
+
+def vadd(a, b) -> Vec3:
+    return Vec3(x=a.x + b.x, y=a.y + b.y, z=a.z + b.z)
+
+
+def vsub(a, b) -> Vec3:
+    return Vec3(x=a.x - b.x, y=a.y - b.y, z=a.z - b.z)
+
+
+def vscale(a, s) -> Vec3:
+    return Vec3(x=a.x * s, y=a.y * s, z=a.z * s)
+
+
+def vmul(a, b) -> Vec3:
+    return Vec3(x=a.x * b.x, y=a.y * b.y, z=a.z * b.z)
+
+
+def vdot(a, b) -> float:
+    return a.x * b.x + a.y * b.y + a.z * b.z
+
+
+def vunit(a) -> Vec3:
+    return vscale(a, 1.0 / sqrt(vdot(a, a)))
+
+
+def vcross(a, b) -> Vec3:
+    return Vec3(
+        x=a.y * b.z - a.z * b.y,
+        y=a.z * b.x - a.x * b.z,
+        z=a.x * b.y - a.y * b.x,
+    )
+
+
+def vreflect(v, n) -> Vec3:
+    return vsub(v, vscale(n, 2.0 * vdot(v, n)))
+
+
+# Snell's law refraction with total internal reflection guard.
+def vrefract(uv, n, etai_over_etat) -> Vec3:
+    cos_t = min(vdot(vscale(uv, -1.0), n), 1.0)
+    r_perp = vscale(vadd(uv, vscale(n, cos_t)), etai_over_etat)
+    k = abs(1.0 - vdot(r_perp, r_perp))
+    r_par = vscale(n, -sqrt(k))
+    return vadd(r_perp, r_par)
+
+
+def schlick(cosine, ref_idx) -> float:
+    r0 = (1.0 - ref_idx) / (1.0 + ref_idx)
+    r0 = r0 * r0
+    m = 1.0 - cosine
+    return r0 + (1.0 - r0) * m * m * m * m * m
+
+
+# xorshift64* PRNG matching ref_rt.cpp bit-for-bit via Pa u64 arithmetic.
+def rng_next01(rng) -> float:
+    x = rng.s
+    x = x ^ (x >> u64(12))
+    x = x ^ (x << u64(25))
+    x = x ^ (x >> u64(27))
+    rng.s = x
+    v = x * u64(2685821657736338717)
+    return float(v >> u64(11)) * (1.0 / 9007199254740992.0)
+
+
+def rand_unit_sphere(rng) -> Vec3:
+    while True:
+        px = rng_next01(mut(rng)) * 2.0 - 1.0
+        py = rng_next01(mut(rng)) * 2.0 - 1.0
+        pz = rng_next01(mut(rng)) * 2.0 - 1.0
+        p = Vec3(x=px, y=py, z=pz)
+        if vdot(p, p) < 1.0:
+            return p
+
+
+def sphere_hit_t(ro, rd, sp, closest) -> float:
+    oc = vsub(ro, sp.center)
+    a = vdot(rd, rd)
+    hb = vdot(oc, rd)
+    c = vdot(oc, oc) - sp.radius * sp.radius
+    disc = hb * hb - a * c
+    if disc <= 0.0:
+        return -1.0
+    sq = sqrt(disc)
+    root = (-hb - sq) / a
+    if root < 0.001 or root >= closest:
+        root = (-hb + sq) / a
+    if root >= 0.001 and root < closest:
+        return root
+    return -1.0
+
+
+def scatter_dielectric(ro_hit, rd, n, front, ior, atten, rng) -> RayState:
+    ratio = (1.0 / ior) if front else ior
+    ud = vunit(rd)
+    cos_t = min(vdot(vscale(ud, -1.0), n), 1.0)
+    sin_t = sqrt(max(0.0, 1.0 - cos_t * cos_t))
+    cannot = ratio * sin_t > 1.0
+    do_refl = cannot or (schlick(cos_t, ratio) > rng_next01(mut(rng)))
+    if do_refl:
+        nxt_d = vreflect(ud, n)
+    else:
+        nxt_d = vrefract(uv=ud, n=n, etai_over_etat=ratio)
+    return RayState(ro=ro_hit, rd=nxt_d, atten=atten, alive=1)
+
+
+# Tag-dispatched material scatter replacing C++ virtual material::scatter().
+def scatter_hit(st, sp, t, rng) -> RayState:
+    p = vadd(st.ro, vscale(st.rd, t))
+    out_n = vscale(vsub(p, sp.center), 1.0 / sp.radius)
+    front = vdot(st.rd, out_n) < 0.0
+    n = out_n
+    if not front:
+        n = vscale(out_n, -1.0)
+    if sp.mat == 0:
+        target = vadd(n, vunit(rand_unit_sphere(mut(rng))))
+        if vdot(target, target) < 1e-12:
+            target = n
+        return RayState(ro=p, rd=target, atten=vmul(st.atten, sp.albedo), alive=1)
+    if sp.mat == 1:
+        refl = vadd(vreflect(vunit(st.rd), n), vscale(rand_unit_sphere(mut(rng)), sp.param))
+        if vdot(refl, n) <= 0.0:
+            return RayState(ro=p, rd=refl, atten=Vec3(x=0.0, y=0.0, z=0.0), alive=0)
+        return RayState(ro=p, rd=refl, atten=vmul(st.atten, sp.albedo), alive=1)
+    return scatter_dielectric(
+        ro_hit=p,
+        rd=st.rd,
+        n=n,
+        front=front,
+        ior=sp.param,
+        atten=st.atten,
+        rng=mut(rng),
+    )
+
+
+def trace_ray(ro, rd, world, rng) -> Vec3:
+    st = RayState(ro=ro, rd=rd, atten=Vec3(x=1.0, y=1.0, z=1.0), alive=1)
+    nworld = len(world)
+    for _ in range(MAX_DEPTH):
+        closest = 1e30
+        hit_idx = -1
+        for i in range(nworld):
+            t = sphere_hit_t(ro=st.ro, rd=st.rd, sp=world[i], closest=closest)
+            if t > 0.0:
+                closest = t
+                hit_idx = i
+        if hit_idx < 0:
+            ud = vunit(st.rd)
+            sky_t = 0.5 * (ud.y + 1.0)
+            sky = vadd(vscale(Vec3(x=1.0, y=1.0, z=1.0), 1.0 - sky_t), vscale(Vec3(x=0.45, y=0.70, z=1.0), sky_t))
+            return vmul(st.atten, sky)
+        st = scatter_hit(st=st, sp=world[hit_idx], t=closest, rng=mut(rng))
+        if st.alive == 0:
+            return Vec3(x=0.0, y=0.0, z=0.0)
+    return Vec3(x=0.0, y=0.0, z=0.0)
+
+
+def build_scene() -> list[Sphere]:
+    w = [Sphere(center=Vec3(x=0.0, y=0.0, z=0.0), radius=1.0, mat=0, albedo=Vec3(x=0.0, y=0.0, z=0.0), param=0.0)] * 0
+    w.append(Sphere(center=Vec3(x=0.0, y=-1000.0, z=0.0), radius=1000.0, mat=0, albedo=Vec3(x=0.42, y=0.48, z=0.44), param=0.0))
+    w.append(Sphere(center=Vec3(x=0.0, y=1.0, z=0.0), radius=1.0, mat=2, albedo=Vec3(x=1.0, y=1.0, z=1.0), param=1.5))
+    w.append(Sphere(center=Vec3(x=-2.3, y=1.0, z=-0.4), radius=1.0, mat=0, albedo=Vec3(x=0.82, y=0.28, z=0.24), param=0.0))
+    w.append(Sphere(center=Vec3(x=2.3, y=1.0, z=-0.2), radius=1.0, mat=1, albedo=Vec3(x=0.85, y=0.72, z=0.42), param=0.06))
+    w.append(Sphere(center=Vec3(x=-0.9, y=0.35, z=1.7), radius=0.35, mat=1, albedo=Vec3(x=0.80, y=0.85, z=0.92), param=0.02))
+    w.append(Sphere(center=Vec3(x=0.95, y=0.35, z=1.65), radius=0.35, mat=0, albedo=Vec3(x=0.22, y=0.56, z=0.82), param=0.0))
+    w.append(Sphere(center=Vec3(x=0.0, y=0.28, z=2.25), radius=0.28, mat=0, albedo=Vec3(x=0.92, y=0.72, z=0.22), param=0.0))
+    w.append(Sphere(center=Vec3(x=-1.7, y=0.30, z=1.3), radius=0.30, mat=2, albedo=Vec3(x=1.0, y=1.0, z=1.0), param=1.5))
+    w.append(Sphere(center=Vec3(x=1.8, y=0.30, z=1.25), radius=0.30, mat=0, albedo=Vec3(x=0.32, y=0.72, z=0.48), param=0.0))
+    w.append(Sphere(center=Vec3(x=-3.3, y=0.45, z=0.9), radius=0.45, mat=1, albedo=Vec3(x=0.75, y=0.45, z=0.65), param=0.18))
+    w.append(Sphere(center=Vec3(x=3.4, y=0.45, z=0.8), radius=0.45, mat=0, albedo=Vec3(x=0.25, y=0.35, z=0.68), param=0.0))
+    w.append(Sphere(center=Vec3(x=-1.1, y=0.40, z=-1.9), radius=0.40, mat=1, albedo=Vec3(x=0.90, y=0.90, z=0.90), param=0.0))
+    w.append(Sphere(center=Vec3(x=1.2, y=0.40, z=-1.8), radius=0.40, mat=0, albedo=Vec3(x=0.88, y=0.45, z=0.18), param=0.0))
+    return w
+
+
+def to_channel_u8(x) -> u8:
+    clamped = max(0.0, min(0.9999, x))
+    return u8(int(255.999 * clamped))
+
+
+def render_image(world, w, h, spp) -> list[u8]:
+    lookfrom = Vec3(x=0.0, y=1.85, z=6.2)
+    lookat = Vec3(x=0.0, y=0.85, z=0.0)
+    vup = Vec3(x=0.0, y=1.0, z=0.0)
+    fov_rad = 34.0 * 3.141592653589793 / 180.0
+    vh = 2.0 * tan(fov_rad * 0.5)
+    vw = vh * (float(w) / float(h))
+    cw = vunit(vsub(lookfrom, lookat))
+    cu = vunit(vcross(vup, cw))
+    cv = vcross(cw, cu)
+    horiz = vscale(cu, vw)
+    vert = vscale(cv, vh)
+    lower_left = vsub(vsub(vsub(lookfrom, vscale(horiz, 0.5)), vscale(vert, 0.5)), cw)
+
+    rgb = [u8(0)] * (w * h * 3)
+    rng = Rng(s=u64(12345678901234567))
+    inv_spp = 1.0 / float(spp)
+    for j in range(h):
+        for i in range(w):
+            col = Vec3(x=0.0, y=0.0, z=0.0)
+            for _ in range(spp):
+                u = (float(i) + rng_next01(mut(rng))) / float(w - 1)
+                v = (float(h - 1 - j) + rng_next01(mut(rng))) / float(h - 1)
+                rd = vsub(vadd(vadd(lower_left, vscale(horiz, u)), vscale(vert, v)), lookfrom)
+                col = vadd(col, trace_ray(ro=lookfrom, rd=rd, world=world, rng=mut(rng)))
+            off = (j * w + i) * 3
+            rgb[off] = to_channel_u8(sqrt(col.x * inv_spp))
+            rgb[off + 1] = to_channel_u8(sqrt(col.y * inv_spp))
+            rgb[off + 2] = to_channel_u8(sqrt(col.z * inv_spp))
+    return rgb
+
+
+def main() -> int:
+    world = build_scene()
+    t0 = rt_bridge.now_ms()
+    rgb = render_image(world=world, w=IMG_W, h=IMG_H, spp=SPP)
+    pa_ms = rt_bridge.now_ms() - t0
+    ok = rt_bridge.verify_vs_cpp_and_save(
+        rgb,
+        IMG_W,
+        IMG_H,
+        SPP,
+        pa_ms,
+        "/tmp/ref_rt",
+        "examples/raytracer/render.png",
+    )
+    return 0 if ok == 1 else 1

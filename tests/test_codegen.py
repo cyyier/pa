@@ -316,3 +316,62 @@ def test_no_silent_i32_overflow_with_default_i64(tmp_path):
     for _ in range(10):
         x = (x * 1103515245 + 12345) % 2147483648
     assert r.stdout.split() == [str(x), "10000000000"]
+
+
+def test_u8_unsigned_shift_div_and_compare(tmp_path):
+    r = run_pa(tmp_path, """
+        def main() -> int:
+            buf = [u8(200), u8(50), u8(255), u8(128)]
+            a = buf[0]
+            b = buf[1]
+            c = buf[2]
+            d = buf[3]
+            gt = 1 if a > b else 0
+            lt = 1 if b < d else 0
+            sh = a >> u8(4)
+            dv = a // u8(10)
+            rm = c % u8(10)
+            print(gt, lt, int(sh), int(dv), int(rm))
+            return 0
+    """)
+    assert r.stdout.split() == ["1", "1", "12", "20", "5"]
+
+
+def test_u32_and_u64_unsigned_ops_and_paw(tmp_path):
+    (tmp_path / "uhelper.paw").write_text(
+        "def echo_u64(x: u64, arr: list[u64]) -> u64:\n"
+        "    assert x == 11400714819323198485\n"
+        "    assert list(arr) == [18446744073709551615, 4294967295]\n"
+        "    return x ^ 1\n",
+        encoding="utf-8",
+    )
+    r = run_pa(tmp_path, """
+        import uhelper
+
+        def main() -> int:
+            # 0x9E3779B97F4A7C15 = 11400714819323198485 (> 2^63)
+            big = u64(11400714819323198485)
+            hi = u64(18446744073709551615)
+            small = u64(10)
+            gt = 1 if big > small else 0
+            sh = big >> u64(60)
+            dv = hi // u64(3)
+            rm = hi % u64(10)
+            a32 = u32(4000000000)
+            b32 = u32(100)
+            gt32 = 1 if a32 > b32 else 0
+            sh32 = a32 >> u32(28)
+            arr = [hi, u64(4294967295)]
+            back = uhelper.echo_u64(big, arr)
+            print(gt, sh, dv, rm, gt32, sh32, back)
+            return 0
+    """)
+    assert r.stdout.split() == [
+        "1",
+        str(0x9E3779B97F4A7C15 >> 60),
+        str(0xFFFFFFFFFFFFFFFF // 3),
+        str(0xFFFFFFFFFFFFFFFF % 10),
+        "1",
+        str(4000000000 >> 28),
+        str(0x9E3779B97F4A7C15 ^ 1),
+    ]

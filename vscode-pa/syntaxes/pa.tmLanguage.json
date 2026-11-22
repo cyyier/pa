@@ -27,7 +27,7 @@
       "name": "support.type.generic.pa"
     },
     "pa-primitive-types": {
-      "match": "\\b(i32|i64|u8|f32|f64|str_view|bytes_view|void)\\b",
+      "match": "\\b(i32|i64|u8|u32|u64|f32|f64|str_view|bytes_view|void)\\b",
       "name": "support.type.primitive.pa"
     }
   }

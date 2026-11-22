@@ -1,0 +1,235 @@
+import verify
+
+# Pure-Pa CRC-32 (IEEE 802.3) and SHA-256 (FIPS 180-4).
+
+MASK32 = 4294967295
+TWO32 = 4294967296.0
+CRC32_POLY = 3988292384
+
+
+def rotr32(x, n) -> int:
+    return ((x >> n) | ((x << (32 - n)) & MASK32)) & MASK32
+
+
+def build_crc32_table():
+    table = [0] * 256
+    for i in range(256):
+        c = i
+        for _ in range(8):
+            if (c & 1) != 0:
+                c = CRC32_POLY ^ (c >> 1)
+            else:
+                c = c >> 1
+        table[i] = c
+    return table
+
+
+def crc32_u8(data, table) -> int:
+    crc = MASK32
+    n = len(data)
+    for i in range(n):
+        b = int(data[i])
+        idx = (crc ^ b) & 255
+        crc = table[idx] ^ (crc >> 8)
+    return crc ^ MASK32
+
+
+def is_prime(n) -> bool:
+    if n < 2:
+        return False
+    d = 2
+    while d * d <= n:
+        if n % d == 0:
+            return False
+        d += 1
+    return True
+
+
+def cbrt_frac32(n) -> int:
+    # Two Newton steps give full IEEE 754 f64 precision for the 32 fractional bits.
+    fn = float(n)
+    r = exp(log(fn) / 3.0)
+    r = (2.0 * r + fn / (r * r)) / 3.0
+    r = (2.0 * r + fn / (r * r)) / 3.0
+    return int((r - floor(r)) * TWO32) & MASK32
+
+
+def build_sha256_k():
+    k = [0] * 64
+    found = 0
+    cand = 2
+    while found < 64:
+        if is_prime(cand):
+            k[found] = cbrt_frac32(cand)
+            found += 1
+        cand += 1
+    return k
+
+
+def build_sha256_iv():
+    iv = [0] * 8
+    found = 0
+    cand = 2
+    while found < 8:
+        if is_prime(cand):
+            r = sqrt(float(cand))
+            iv[found] = int((r - floor(r)) * TWO32) & MASK32
+            found += 1
+        cand += 1
+    return iv
+
+
+def sha256_pad(data) -> list[u8]:
+    n = len(data)
+    rem = (n + 9) % 64
+    pad_zeros = 0 if rem == 0 else (64 - rem)
+    total = n + 1 + pad_zeros + 8
+    out = [u8(0)] * total
+    for i in range(n):
+        out[i] = data[i]
+    out[n] = u8(128)
+    bit_len = n * 8
+    for i in range(8):
+        shift = (7 - i) * 8
+        out[total - 8 + i] = u8((bit_len >> shift) & 255)
+    return out
+
+
+def sha256_schedule(block, off):
+    w = [0] * 64
+    for i in range(16):
+        j = off + i * 4
+        b0 = int(block[j])
+        b1 = int(block[j + 1])
+        b2 = int(block[j + 2])
+        b3 = int(block[j + 3])
+        w[i] = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
+    for i in range(16, 64):
+        x = w[i - 15]
+        s0 = rotr32(x, 7) ^ rotr32(x, 18) ^ (x >> 3)
+        y = w[i - 2]
+        s1 = rotr32(y, 17) ^ rotr32(y, 19) ^ (y >> 10)
+        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) & MASK32
+    return w
+
+
+def sha256_compress(state, block, off, k) -> void:
+    w = sha256_schedule(block, off)
+    a = state[0]
+    b = state[1]
+    c = state[2]
+    d = state[3]
+    e = state[4]
+    f = state[5]
+    g = state[6]
+    h = state[7]
+    for i in range(64):
+        s1 = rotr32(e, 6) ^ rotr32(e, 11) ^ rotr32(e, 25)
+        ch = (e & f) ^ ((~e & MASK32) & g)
+        t1 = (h + s1 + ch + k[i] + w[i]) & MASK32
+        s0 = rotr32(a, 2) ^ rotr32(a, 13) ^ rotr32(a, 22)
+        maj = (a & b) ^ (a & c) ^ (b & c)
+        t2 = (s0 + maj) & MASK32
+        h = g
+        g = f
+        f = e
+        e = (d + t1) & MASK32
+        d = c
+        c = b
+        b = a
+        a = (t1 + t2) & MASK32
+    state[0] = (state[0] + a) & MASK32
+    state[1] = (state[1] + b) & MASK32
+    state[2] = (state[2] + c) & MASK32
+    state[3] = (state[3] + d) & MASK32
+    state[4] = (state[4] + e) & MASK32
+    state[5] = (state[5] + f) & MASK32
+    state[6] = (state[6] + g) & MASK32
+    state[7] = (state[7] + h) & MASK32
+
+
+def sha256_u8(data, k):
+    padded = sha256_pad(data)
+    state = build_sha256_iv()
+    n = len(padded)
+    off = 0
+    while off < n:
+        sha256_compress(
+            state=mut(state),
+            block=padded,
+            off=off,
+            k=k,
+        )
+        off += 64
+    return state
+
+
+def make_payload(n, seed) -> list[u8]:
+    buf = [u8(0)] * n
+    s = seed
+    for i in range(n):
+        s = (s * 1103515245 + 12345) & 2147483647
+        buf[i] = u8((s >> 16) & 255)
+    return buf
+
+
+def bench_crc32(data, iters) -> int:
+    table = build_crc32_table()
+    acc = 0
+    for _ in range(iters):
+        acc ^= crc32_u8(data, table)
+    return acc
+
+
+def bench_sha256(data, iters) -> int:
+    k = build_sha256_k()
+    acc = 0
+    for _ in range(iters):
+        d = sha256_u8(data, k)
+        acc ^= d[0]
+    return acc
+
+
+def check_case(buf, table, k) -> int:
+    crc = crc32_u8(buf, table)
+    sha = sha256_u8(buf, k)
+    return verify.verify_vector(buf, crc, sha)
+
+
+def verify_all(table, k) -> int:
+    ok = 0
+    ok += check_case(buf=make_payload(0, 1), table=table, k=k)
+    ok += check_case(buf=make_payload(3, 2), table=table, k=k)
+    ok += check_case(buf=make_payload(55, 3), table=table, k=k)
+    ok += check_case(buf=make_payload(56, 4), table=table, k=k)
+    ok += check_case(buf=make_payload(63, 5), table=table, k=k)
+    ok += check_case(buf=make_payload(64, 6), table=table, k=k)
+    ok += check_case(buf=make_payload(65, 7), table=table, k=k)
+    ok += check_case(buf=make_payload(128, 8), table=table, k=k)
+    ok += check_case(buf=make_payload(4096, 9), table=table, k=k)
+    return ok
+
+
+def main() -> int:
+    table = build_crc32_table()
+    k = build_sha256_k()
+    ok = verify_all(table, k)
+    print("Verified vectors:", ok, "/ 9")
+    if ok != 9:
+        return 1
+
+    payload = make_payload(100000, 42)
+    crc_iters = 50
+    sha_iters = 20
+
+    t0 = verify.now_ms()
+    c_acc = bench_crc32(payload, crc_iters)
+    pa_crc_ms = verify.now_ms() - t0
+
+    t1 = verify.now_ms()
+    s_acc = bench_sha256(payload, sha_iters)
+    pa_sha_ms = verify.now_ms() - t1
+
+    print("Checksums:", c_acc, s_acc)
+    verify.bench_python_and_report(payload, crc_iters, sha_iters, pa_crc_ms, pa_sha_ms)
+    return 0

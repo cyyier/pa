@@ -10,7 +10,7 @@ from .paw import PawModule, find_paw, load_paw
 from .types import (
     BOOL, COPY_WARN_LIMIT, F32, F64, I32, I64, STACK_LIMIT, STR_VIEW, UNKNOWN, VOID,
     BUILTINS_OK, INTRINSICS, MATH_UNARY, MATH_BINARY, DynList, FixedList, Ptr, Span, StackVec, StructT, Type, Vec,
-    is_aggregate, is_numeric, parse_annotation, promote, resolve, SCALARS, StrOwned, is_str, U8, display, simple_display, Scalar,
+    is_aggregate, is_numeric, parse_annotation, promote, resolve, SCALARS, StrOwned, is_str, U8, U32, U64, display, simple_display, Scalar,
 )
 
 ROOT = "<root>"
@@ -135,7 +135,7 @@ def paw_arg_compatible(pt: Type, at: Type) -> bool:
     if isinstance(pt, FixedList):
         return isinstance(at, FixedList) and at.elem == pt.elem and at.n == pt.n
     if isinstance(pt, Vec):
-        return isinstance(at, (Vec, StackVec)) and at.elem == pt.elem
+        return isinstance(at, (FixedList, Vec, StackVec, Span)) and at.elem == pt.elem
     if isinstance(pt, Span):
         return isinstance(at, (FixedList, Vec, StackVec, Span)) and at.elem == pt.elem
     if pt == STR_VIEW:
@@ -568,10 +568,20 @@ class FuncInferer:
             return VOID
         if n in ("copy", "free"):
             return VOID
-        if n == "int":
+        if n in ("int", "i64"):
             return I64
-        if n == "float":
+        if n == "i32":
+            return I32
+        if n == "u8":
+            return U8
+        if n == "u32":
+            return U32
+        if n == "u64":
+            return U64
+        if n in ("float", "f64"):
             return F64
+        if n == "f32":
+            return F32
         if n == "bool":
             return BOOL
         if n in MATH_UNARY or n in MATH_BINARY:

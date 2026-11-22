@@ -121,9 +121,10 @@ def build_core(tmp: str, mode: str) -> str:
 
 
 def c_type(t) -> str:
-    from .types import F32, F64, I32, I64, U8, BOOL, VOID, ViewT, Span, resolve
+    from .types import F32, F64, I32, I64, U8, U32, U64, BOOL, VOID, ViewT, Span, resolve
     t = resolve(t)
-    table = {I32: "int32_t", I64: "int64_t", U8: "uint8_t", F32: "float", F64: "double", BOOL: "_Bool", VOID: "void"}
+    table = {I32: "int32_t", I64: "int64_t", U8: "uint8_t", U32: "uint32_t", U64: "uint64_t",
+             F32: "float", F64: "double", BOOL: "_Bool", VOID: "void"}
     if t in table:
         return table[t]
     if isinstance(t, (Span, ViewT)):
