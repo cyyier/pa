@@ -800,14 +800,19 @@ class FuncInferer:
 
 
 # ---------------------------------------------------------------------------
-def collect_module(tree: ast.Module, sink: DiagnosticSink, search_dirs=None) -> ModuleInfo:
+def collect_module(tree: ast.Module, sink: DiagnosticSink, search_dirs=None, paw_paths=None) -> ModuleInfo:
     mod = ModuleInfo()
+    for alias, path in (paw_paths or {}).items():
+        mod.paw[alias] = load_paw(path)
     for node in tree.body:
         if isinstance(node, ast.Import):
             for a in node.names:
+                alias = a.asname or a.name
+                if alias in mod.paw:
+                    continue
                 path = find_paw(a.name, search_dirs or [])
                 if path:
-                    mod.paw[a.asname or a.name] = load_paw(path)
+                    mod.paw[alias] = load_paw(path)
     for node in tree.body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             v = eval_const(node.value, mod)
@@ -845,10 +850,10 @@ def initial_params(mod: ModuleInfo, info: FuncInfo) -> dict:
 
 
 def analyze(tree: ast.Module, sink: Optional[DiagnosticSink] = None, source: str = "",
-            filename: str = "<mem>", search_dirs=None) -> ModuleInfo:
+            filename: str = "<mem>", search_dirs=None, paw_paths=None) -> ModuleInfo:
     """Infer every function. Call-site types propagate to a fixed point; one final pass reports."""
     sink = sink or DiagnosticSink(source, filename)
-    mod = collect_module(tree, sink, search_dirs)
+    mod = collect_module(tree, sink, search_dirs, paw_paths=paw_paths)
     for fi in mod.funcs.values():
         if fi.node.returns is not None:
             fi.ret = parse_annotation(fi.node.returns, mod.structs)

@@ -242,7 +242,7 @@ def _macos_make_rpath_relative(binary: str) -> None:
 
 def compile_pa(path: str, out: Optional[str] = None, shared: bool = False, emit_ir: bool = False,
                mode: str = "dev", python_home: Optional[str] = None, python_path: Optional[list] = None,
-               relocatable: bool = False) -> str:
+               relocatable: bool = False, include_dirs: Optional[list] = None) -> str:
     """Compile a .pa file. Returns the output path (or the IR text when emit_ir).
 
     dev : deep static lint of every imported .paw + full runtime boundary customs (element scans, big snapshots)
@@ -257,13 +257,15 @@ def compile_pa(path: str, out: Optional[str] = None, shared: bool = False, emit_
         raise BuildError(f"unknown mode '{mode}' (use dev or prod)")
     with open(path, encoding="utf-8") as f:
         source = f.read()
-    dirs = default_search_dirs(path)
+    dirs = default_search_dirs(path) + list(include_dirs or [])
     diags = check_source(source, path, search_dirs=dirs)
     errors = [d for d in diags if d.severity == "error"]
     if errors:
         raise BuildError("\n".join(d.brief() for d in errors))
     tree = ast.parse(source, path)
-    info = analyze(tree, DiagnosticSink(source, path), source, path, dirs)
+    from .modules import link_modules
+    linked_tree, _, paw_paths = link_modules(tree, path, dirs)
+    info = analyze(linked_tree, DiagnosticSink(source, path), source, path, dirs, paw_paths=paw_paths)
     paw_errors = []
     for pm in info.paw.values():
         with open(pm.path, encoding="utf-8") as f:
@@ -271,7 +273,7 @@ def compile_pa(path: str, out: Optional[str] = None, shared: bool = False, emit_
     if paw_errors:
         raise BuildError("\n".join(d.brief() for d in paw_errors))
     try:
-        ir_text, paws = generate(tree, info, os.path.basename(path), shared, mode)
+        ir_text, paws = generate(linked_tree, info, os.path.basename(path), shared, mode)
     except CodegenError as e:
         raise BuildError(f"{path}:{e.line}: error PA_E100: {e}")
     if emit_ir:
@@ -404,8 +406,11 @@ def c_string_literal(data: bytes) -> str:
 
 def embed_source(info, pyhome: str = "", pypath: str = "") -> str:
     """C table of imported .paw sources and baked CPython fallback paths (no command-line quoting issues)."""
-    rows = []
+    rows, seen = [], set()
     for alias, pm in info.paw.items():
+        if pm.name in seen:
+            continue
+        seen.add(pm.name)
         with open(pm.path, "rb") as f:
             rows.append(f'    {{ "{pm.name}",\n{c_string_literal(f.read())} }},')
     return (

@@ -25,7 +25,7 @@ def collect(paths: list) -> list:
 def cmd_check(args) -> int:
     diags = []
     for f in collect(args.paths):
-        diags += check_file(f, mode=args.mode)
+        diags += check_file(f, mode=args.mode, include_dirs=args.include or None)
     if args.ai_diagnostic:
         print(json.dumps([d.to_dict() for d in diags], ensure_ascii=False, indent=2))
     else:
@@ -39,7 +39,7 @@ def cmd_build(args) -> int:
     try:
         out = compile_pa(args.file, out=args.output, shared=args.shared, emit_ir=args.emit_ir, mode=args.mode,
                          python_home=args.python_home, python_path=args.python_path or None,
-                         relocatable=args.relocatable)
+                         relocatable=args.relocatable, include_dirs=args.include or None)
     except BuildError as e:
         print(e, file=sys.stderr)
         return 1
@@ -97,12 +97,14 @@ def main(argv=None) -> int:
     c.add_argument("paths", nargs="+")
     c.add_argument("--ai-diagnostic", action="store_true", help="emit JSON repair tickets")
     c.add_argument("--mode", choices=("dev", "prod"), default="dev", help="dev: deep .paw In->Out lint (default)")
+    c.add_argument("-I", "--include", action="append", help="extra directory to search for .pa modules (repeatable)")
     c.set_defaults(fn=cmd_check)
     b = sub.add_parser("build", help="compile a .pa file")
     b.add_argument("file")
     b.add_argument("-o", "--output")
     b.add_argument("--mode", choices=("dev", "prod"), default="dev",
                    help="dev: deep .paw lint + full boundary customs; prod: signature check + light customs")
+    b.add_argument("-I", "--include", action="append", help="extra directory to search for .pa modules (repeatable)")
     b.add_argument("--python-home", help="default CPython prefix baked as a run-time fallback (PA_PYTHON_HOME overrides)")
     b.add_argument("--python-path", action="append", help="default sys.path entry baked as a fallback (repeatable; PA_PYPATH overrides)")
     b.add_argument("--relocatable", action="store_true", help="bake no Python paths at all (rely on PA_PYTHON_HOME / PA_PYPATH / VIRTUAL_ENV)")

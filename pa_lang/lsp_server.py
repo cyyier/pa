@@ -13,6 +13,7 @@ from urllib.request import url2pathname
 
 from .diagnostics import DiagnosticSink
 from .infer import FuncInfo, ModuleInfo, analyze
+from .modules import link_modules
 from .types import FixedList, Scalar, StackVec, StructT, Vec, display, resolve, simple_display
 from .validator import check_source, complexity, default_search_dirs
 
@@ -46,7 +47,9 @@ class DocAnalysis:
             self.tree = ast.parse(source, path)
         except SyntaxError:
             return
-        self.info = analyze(self.tree, DiagnosticSink(source, path), source, path, default_search_dirs(path))
+        dirs = default_search_dirs(path)
+        linked_tree, _, paw_paths = link_modules(self.tree, path, dirs)
+        self.info = analyze(linked_tree, DiagnosticSink(source, path), source, path, dirs, paw_paths=paw_paths)
 
     # ---- inlay hints: list of (line0, col0, label) --------------------
     def hints(self) -> list:
@@ -55,6 +58,8 @@ class DocAnalysis:
             return out
         detailed = self.detail == "detailed"
         for fi in self.info.funcs.values():
+            if fi.name.startswith("__pa_m"):
+                continue
             for line, name, text in (fi.hints if detailed else fi.hints_simple):
                 out.append((line - 1, self.hint_col(line, name), text))
             if not detailed:          # simple mode: memory-strategy notes live in the hover card
@@ -95,6 +100,8 @@ class DocAnalysis:
         if not self.info:
             return None
         for fi in self.info.funcs.values():
+            if fi.name.startswith("__pa_m"):
+                continue
             if fi.node.lineno <= line <= fi.node.end_lineno:
                 return fi
         return None

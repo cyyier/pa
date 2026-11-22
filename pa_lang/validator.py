@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import ast
+import os
 from typing import Iterator, Optional
 
 from .diagnostics import Diagnostic, DiagnosticSink
 from .infer import _decorators, analyze
+from .modules import is_pa_import_node, link_modules
 from .paw import find_paw, parse_paw
 from .types import ALLOWED_IMPORT_ROOTS, FORBIDDEN_CALLS, INTRINSICS, LIST_MUTATORS
 
@@ -89,6 +91,10 @@ class Validator:
 
     def check_imports(self) -> None:
         for n in ast.walk(self.tree):
+            if not isinstance(n, (ast.Import, ast.ImportFrom)):
+                continue
+            if is_pa_import_node(n, self.search_dirs):
+                continue
             mods = []
             if isinstance(n, ast.Import):
                 mods = [a.name for a in n.names]
@@ -100,7 +106,7 @@ class Validator:
                     continue
                 if isinstance(n, ast.Import) and find_paw(m, self.search_dirs):
                     continue
-                self.sink.report("PA_E001", n, f"'{m}' import is forbidden in a .pa module (only pa, pa_lang and project .paw modules)",
+                self.sink.report("PA_E001", n, f"'{m}' import is forbidden in a .pa module (only pa, pa_lang, .pa and .paw modules)",
                                  inferred_context={"module": m},
                                  causal_chain=[f"{m} is a dynamic Python library",
                                                ".pa modules must compile to pure native code",
@@ -481,11 +487,46 @@ def check_source(source: str, filename: str = "<mem>", kind: Optional[str] = Non
     else:
         dirs = search_dirs if search_dirs is not None else default_search_dirs(filename)
         Validator(tree, sink, dirs).run()
-        analyze(tree, sink, source, filename, dirs)
-    sink.items.sort(key=lambda d: (d.location["line"], d.code))
+        linked_tree, imported_pa, paw_paths = link_modules(tree, filename, dirs, sink)
+        extra_diags = []
+        for dep_path in imported_pa:
+            with open(dep_path, encoding="utf-8") as df:
+                dep_src = df.read()
+            dep_sink = DiagnosticSink(dep_src, dep_path)
+            try:
+                dep_tree = ast.parse(dep_src, dep_path)
+            except SyntaxError as e:
+                dep_sink.report("PA_E000", None, f"syntax error: {e.msg}", line=e.lineno or 1)
+            else:
+                dep_dirs = [os.path.dirname(os.path.abspath(dep_path))] + [d for d in dirs if d != os.path.dirname(os.path.abspath(dep_path))]
+                Validator(dep_tree, dep_sink, dep_dirs).run()
+            extra_diags.extend(dep_sink.items)
+        if imported_pa:
+            # Cross-module checks (mut() requirements, .paw calls in loops, >2 positional args) on entry functions
+            lv = Validator(linked_tree, sink, dirs)
+            lv.paw_aliases |= set(paw_paths.keys())
+            lv.boundary_funcs = lv.compute_pycalling()
+            lv.mutated = lv.compute_mutated()
+            entry_fns = {n.name for n in tree.body if isinstance(n, ast.FunctionDef)}
+            for fname in entry_fns:
+                fn = lv.funcs.get(fname)
+                if fn is None:
+                    continue
+                for n in walk_code(fn):
+                    if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id.startswith("__pa_m"):
+                        if len(n.args) > 2 and n.func.id in lv.funcs:
+                            sink.report("PA_E051", n, f"call to imported function passes {len(n.args)} positional arguments",
+                                        inferred_context={"callee": n.func.id})
+                        if n.func.id in lv.funcs:
+                            lv.check_mut_args(n, n.func.id)
+                lv.check_boundary_calls_in_loops(fn)
+        analyze(linked_tree, sink, source, filename, dirs, paw_paths=paw_paths)
+        sink.items.extend(extra_diags)
+    sink.items.sort(key=lambda d: (d.location["file"], d.location["line"], d.code))
     return sink.items
 
 
-def check_file(path: str, mode: str = "dev") -> list:
+def check_file(path: str, mode: str = "dev", include_dirs=None) -> list:
     with open(path, encoding="utf-8") as f:
-        return check_source(f.read(), path, mode=mode)
+        dirs = default_search_dirs(path) + list(include_dirs or [])
+        return check_source(f.read(), path, search_dirs=dirs, mode=mode)
