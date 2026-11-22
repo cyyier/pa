@@ -10,7 +10,7 @@ from .paw import PawModule, find_paw, load_paw
 from .types import (
     BOOL, COPY_WARN_LIMIT, F32, F64, I32, I64, STACK_LIMIT, STR_VIEW, UNKNOWN, VOID,
     BUILTINS_OK, INTRINSICS, MATH_UNARY, MATH_BINARY, DynList, FixedList, Ptr, Span, StackVec, StructT, Type, Vec,
-    is_aggregate, is_numeric, parse_annotation, promote, resolve, SCALARS, StrOwned, is_str, U8, U32, U64, display, simple_display, Scalar,
+    is_aggregate, is_csr, is_numeric, parse_annotation, promote, resolve, SCALARS, StrOwned, is_str, U8, U32, U64, display, simple_display, Scalar,
 )
 
 ROOT = "<root>"
@@ -213,7 +213,10 @@ class FuncInferer:
             vt = I64
         else:
             lt = resolve(self.expr(it))
-            vt = U8 if lt == STR_VIEW else getattr(lt, "elem", UNKNOWN)
+            if is_csr(lt):
+                vt = Span(resolve(lt.elem).elem)
+            else:
+                vt = U8 if lt == STR_VIEW else getattr(lt, "elem", UNKNOWN)
         if isinstance(s.target, ast.Name):
             self.bind(s.target.id, vt, s.lineno)
         self.block(s.body)
@@ -259,7 +262,18 @@ class FuncInferer:
             self.assign_name(target.id, val, s)
         else:
             self.expr(val)
-            self.expr(target)
+            if isinstance(target, ast.Subscript) and not isinstance(target.slice, ast.Tuple) \
+                    and is_csr(resolve(self.expr(target.value))):
+                self.sink.report(
+                    "PA_E071", s,
+                    "cannot replace a whole row of CSR Vec[Vec[T]] in place",
+                    inferred_context={"target": ast.unparse(target)},
+                    causal_chain=["Vec[Vec[T]] is stored as flat CSR (data + offsets)",
+                                  "replacing a row with a different length would shift the entire buffer"],
+                    patches=[{"line": s.lineno, "replacement": "# modify elements in-place with g[i][j] = val, or build a new list"}],
+                )
+            else:
+                self.expr(target)
 
     def assign_name(self, name: str, val, s) -> None:
         if isinstance(val, ast.List) and not val.elts:
@@ -275,6 +289,9 @@ class FuncInferer:
                 self.span_locals[name] = val.args[0].id
         elif isinstance(val, ast.Subscript) and isinstance(val.slice, ast.Slice) and isinstance(val.value, ast.Name):
             self.span_locals[name] = val.value.id
+        elif isinstance(val, ast.Subscript) and not isinstance(val.slice, ast.Tuple) and isinstance(val.value, ast.Name):
+            if is_csr(self.env.get(val.value.id, UNKNOWN)):
+                self.span_locals[name] = val.value.id
         t = self.expr(val)
         if isinstance(val, ast.Name):
             t = self.value_copy(name, val, t, s)
@@ -418,7 +435,25 @@ class FuncInferer:
             return UNKNOWN
         first = row_ts[0]
         if any(t != first for t in row_ts):
-            return self.hetero(e, [list(r.elts) for r in rows], row_ts)
+            # Variable-length 2D list -> 1-level CSR Vec[Vec[T]] if all rows share a single scalar/struct element type
+            elem_ts = []
+            for rt in row_ts:
+                if isinstance(rt, DynList) and rt.elem is None:
+                    continue
+                if isinstance(rt, (FixedList, Vec, StackVec, Span)):
+                    elem_ts.append(resolve(rt.elem))
+                else:
+                    return self.hetero(e, [list(r.elts) for r in rows], row_ts)
+            if not elem_ts:
+                return self.hetero(e, [list(r.elts) for r in rows], row_ts)
+            if any(isinstance(et, (FixedList, Vec, StackVec, Span)) for et in elem_ts):
+                self.sink.report("PA_E031", e, "only 1-level ragged lists Vec[Vec[T]] are supported (3D+ nested Vec is not supported)",
+                                 inferred_context={"elements": [et.fmt() for et in elem_ts]})
+                return UNKNOWN
+            unified = self.unify(elem_ts)
+            if unified is None:
+                return self.hetero(e, [list(r.elts) for r in rows], row_ts)
+            return Vec(Vec(unified))
         return self.fixed_or_vec(FixedList(first, len(rows))) if isinstance(first, FixedList) or True else UNKNOWN
 
     def row_is_hetero(self, r: ast.List) -> bool:
@@ -483,9 +518,14 @@ class FuncInferer:
             t = bt
             for ix in e.slice.elts:
                 self.expr(ix)
-                t = resolve(getattr(t, "elem", UNKNOWN))
+                if is_csr(t):
+                    t = Span(resolve(t.elem).elem)
+                else:
+                    t = resolve(getattr(t, "elem", UNKNOWN))
             return t
         self.expr(e.slice)
+        if is_csr(bt):
+            return Span(resolve(bt.elem).elem)
         return U8 if bt == STR_VIEW else getattr(bt, "elem", UNKNOWN)
 
     def e_Attribute(self, e) -> Type:
@@ -619,15 +659,43 @@ class FuncInferer:
         if e.func.attr == "append" and isinstance(recv, ast.Name) and arg_ts:
             self.expr(recv)
             self.on_append(recv.id, arg_ts[0], e)
+        elif e.func.attr == "append" and isinstance(recv, ast.Subscript) and is_csr(resolve(self.expr(recv.value))):
+            self.expr(recv)
+            self.sink.report(
+                "PA_E071", e,
+                "cannot append to an inner row of CSR Vec[Vec[T]]",
+                inferred_context={"target": ast.unparse(recv)},
+                causal_chain=["Vec[Vec[T]] is stored as flat CSR (data + offsets)",
+                              "appending to an interior row would require shifting all subsequent rows"],
+                patches=[{"line": e.lineno, "replacement": "# build each row first, then call outer.append(row)"}],
+            )
         else:
             self.expr(recv)
         return VOID if e.func.attr == "append" else UNKNOWN
 
     def on_append(self, name: str, t: Type, node) -> None:
         container = self.env.get(name)
+        rt = resolve(t)
+        if is_csr(rt):
+            self.sink.report("PA_E031", node, "only 1-level ragged lists Vec[Vec[T]] are supported (cannot nest Vec[Vec[T]] inside Vec)",
+                             inferred_context={"appended": rt.fmt()})
+            return
+        if isinstance(rt, (FixedList, StackVec, Vec, Span)) and not isinstance(rt, StrOwned):
+            if isinstance(resolve(rt.elem), (FixedList, StackVec, Vec, Span)):
+                self.sink.report("PA_E031", node, "only 1-level ragged lists Vec[Vec[T]] are supported (3D+ nested list is not supported)",
+                                 inferred_context={"appended": rt.fmt()})
+                return
+            t = Vec(resolve(rt.elem))
         if isinstance(container, DynList):
             if container.elem is None:
                 container.elem = resolve(t) if not isinstance(t, DynList) else t
+            elif isinstance(container.elem, Vec) and isinstance(t, Vec):
+                ce, te = container.elem.elem, t.elem
+                if ce != te and not (is_numeric(ce) and is_numeric(te)):
+                    self.sink.report("PA_E030", node, f"append of {t.fmt()} into list[{container.elem.fmt()}]",
+                                     inferred_context={"list_elem": container.elem.fmt(), "appended": t.fmt()})
+                else:
+                    container.elem = Vec(widen(ce, te))
             elif container.elem != t and not (is_numeric(t) and is_numeric(container.elem)):
                 self.sink.report("PA_E030", node, f"append of {resolve(t).fmt()} into list[{container.elem.fmt()}]",
                                  inferred_context={"list_elem": container.elem.fmt(), "appended": resolve(t).fmt()},
@@ -655,7 +723,7 @@ class FuncInferer:
                 continue
             bound, escapes = self.list_bound(name)
             elem = resolve(dl.elem)
-            if not escapes and bound is not None and bound * elem.size <= STACK_LIMIT:
+            if not escapes and not isinstance(elem, Vec) and bound is not None and bound * elem.size <= STACK_LIMIT:
                 dl.final = StackVec(elem, max(bound, 1))
                 self.set_storage(name, dl, "stack", False)
             else:
@@ -778,8 +846,11 @@ class FuncInferer:
 
     def check_span_escape(self) -> None:
         local_names = set(self.info.locals) - set(self.info.params)
-        for r, _ in self.returns:
+        for r, rt in self.returns:
             if r.value is None:
+                continue
+            rrt = resolve(rt)
+            if not (isinstance(rrt, Span) or rrt == STR_VIEW or rrt == UNKNOWN):
                 continue
             for n in ast.walk(r.value):
                 base = None
@@ -787,6 +858,9 @@ class FuncInferer:
                         and isinstance(n.args[0], ast.Name):
                     base = n.args[0].id
                 elif isinstance(n, ast.Subscript) and isinstance(n.slice, ast.Slice) and isinstance(n.value, ast.Name):
+                    base = n.value.id
+                elif isinstance(n, ast.Subscript) and not isinstance(n.slice, ast.Tuple) and isinstance(n.value, ast.Name) \
+                        and isinstance(resolve(self.mod.expr_types.get(id(n), UNKNOWN)), Span):
                     base = n.value.id
                 elif isinstance(n, ast.Name) and n.id in self.span_locals:
                     base = self.span_locals[n.id]

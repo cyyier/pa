@@ -613,7 +613,7 @@
               <div class="font-mono text-ink-primary font-semibold">Roadmap &amp; Non-goals</div>
               <ul class="text-ink-secondary space-y-1.5 list-disc pl-4 leading-relaxed">
                 <li>Standalone ecosystem packages (<code class="ic">pa-libs</code>) built on multi-file <code class="ic">.pa</code> module imports (<code class="ic">-I</code> / <code class="ic">PA_PATH</code> / pip packages).</li>
-                <li><em>(Low priority)</em> Nested <code class="ic">Vec</code> fields inside <code class="ic">@struct</code> with recursive RAII destructors (flat SoA arrays are preferred).</li>
+                <li><em>(Low priority)</em> Nested <code class="ic">Vec</code> fields inside <code class="ic">@struct</code> with recursive RAII destructors (flat SoA arrays and CSR <code class="ic">Vec[Vec[T]]</code> are preferred).</li>
                 <li><strong class="text-ink-primary">Non-goal:</strong> static <code class="ic">libpython</code> single-file binaries (incompatible with Windows/macOS CPython distributions and third-party <code class="ic">.pyd</code>/<code class="ic">.so</code> C extensions; use <code class="ic">pac build --bundle --with-stdlib</code> instead).</li>
               </ul>
             </div>

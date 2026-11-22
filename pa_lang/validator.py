@@ -453,9 +453,10 @@ class Validator:
             elif isinstance(n, ast.AugAssign):
                 tgt = [n.target]
             for t in tgt:
-                if isinstance(t, (ast.Subscript, ast.Attribute)) and isinstance(t.value, ast.Name) \
-                        and t.value.id in params:
-                    out.add(t.value.id)
+                if isinstance(t, (ast.Subscript, ast.Attribute)):
+                    r = Validator.root_name(t)
+                    if r in params:
+                        out.add(r)
             if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in LIST_MUTATORS \
                     and isinstance(n.func.value, ast.Name) and n.func.value.id in params:
                 out.add(n.func.value.id)

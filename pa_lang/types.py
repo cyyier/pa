@@ -106,11 +106,20 @@ class StackVec(Type):
 @dataclass(frozen=True)
 class Vec(Type):
     elem: Type
-    size: int = 24  # {ptr, len, cap}
     align: int = 8
+
+    @property
+    def size(self) -> int:  # type: ignore[override]
+        return 48 if isinstance(resolve(self.elem), Vec) else 24
 
     def fmt(self) -> str:
         return f"Vec<{self.elem.fmt()}>"
+
+
+def is_csr(t: Type) -> bool:
+    """Return True if t is a 1-level ragged nested list Vec<Vec<T>> lowered to flat CSR."""
+    rt = resolve(t)
+    return isinstance(rt, Vec) and isinstance(resolve(rt.elem), Vec)
 
 
 @dataclass(frozen=True)

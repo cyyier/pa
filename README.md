@@ -88,11 +88,11 @@ pytest -q                          # run full compiler, runtime, LSP, doctor, an
 
 **Current (`v0.1.0` alpha):**
 - **Supported:** Linux x86-64, macOS (arm64 / x86-64), Windows x64, CPython 3.11–3.13, `gcc` / `clang` / MSVC `cl`, LLVM via `llvmlite`.
-- **Included:** zero-annotation `.pa` compiler (`i32`/`i64`/`u8`/`u32`/`u64`/`f32`/`f64`/`bool`, `**`, zero-copy `str_view` slicing, `@struct`, stack/RAII `Vec`, `String`, `libm`, multi-file `.pa` module imports via local dirs / `-I` / `PA_PATH` / pip packages), `.paw` zero-copy CPython bridge with two-way customs, `--shared` guarded C-ABI libraries, `pac doctor` / `pac bundle` (ELF / Mach-O / PE), `pac skill`, `pac lsp`, and VS Code extension.
+- **Included:** zero-annotation `.pa` compiler (`i32`/`i64`/`u8`/`u32`/`u64`/`f32`/`f64`/`bool`, `**`, zero-copy `str_view` slicing, `@struct`, stack/RAII `Vec`, flat CSR `Vec[Vec[T]]`, `String`, `libm`, multi-file `.pa` module imports via local dirs / `-I` / `PA_PATH` / pip packages), `.paw` zero-copy CPython bridge with two-way customs, `--shared` guarded C-ABI libraries, `pac doctor` / `pac bundle` (ELF / Mach-O / PE), `pac skill`, `pac lsp`, and VS Code extension.
 
 **Planned:**
-- Standalone ecosystem packages (`pa-libs`) for common data, geometry, and parsing libraries (powered by the new multi-file `.pa` module linker).
-- *(Low priority)* Nested `Vec` fields inside `@struct` with recursive RAII destructors (Pa recommends flat SoA / parallel arrays).
+- Standalone ecosystem packages (`pa-libs`) for common data, geometry, and parsing libraries (powered by multi-file `.pa` module imports).
+- *(Low priority)* Nested `Vec` fields inside `@struct` with recursive RAII destructors (Pa recommends flat SoA arrays or CSR `Vec[Vec[T]]`).
 
 **Non-goals (won't do):**
 - Static `libpython` linking for single-file self-contained binaries — standard Python distributions do not ship portable `libpython.a` (especially on Windows/macOS), and third-party Python C extensions (`.pyd`/`.so` such as NumPy) require dynamic `libpython`. Use `pac build --bundle --with-stdlib` for self-contained directory distribution.

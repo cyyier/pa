@@ -14,7 +14,7 @@ from llvmlite import ir
 from .infer import FuncInferer, ModuleInfo, const_value, analyze
 from .paw import ELEM_CODES, PawFunc
 from .types import (BOOL, F32, F64, I32, I64, MATH_BINARY, MATH_UNARY, STR_VIEW, U8, U32, U64, UNKNOWN, VOID, FixedList, Ptr, Span, StackVec,
-                    StructT, Type, Vec, resolve, is_numeric, StrOwned, is_str, Scalar)
+                    StructT, Type, Vec, resolve, is_numeric, StrOwned, is_str, is_csr, Scalar)
 
 UNSIGNED = (U8, U32, U64)
 INT_SCALARS = (I32, I64, U8, U32, U64)
@@ -23,6 +23,7 @@ PTR = ir.PointerType()
 I1, I8, I32T, I64T = ir.IntType(1), ir.IntType(8), ir.IntType(32), ir.IntType(64)
 F32T, F64T, VOIDT = ir.FloatType(), ir.DoubleType(), ir.VoidType()
 VEC = ir.LiteralStructType([PTR, I64T, I64T])
+CSR = ir.LiteralStructType([VEC, VEC])
 VIEW = ir.LiteralStructType([PTR, I64T])
 PAARG = ir.LiteralStructType([I32T, I32T, I64T, F64T, PTR, I64T])
 PARET = ir.LiteralStructType([I64T, F64T, PTR, I64T])
@@ -105,6 +106,7 @@ class ModuleGen:
         if t == F32: return F32T
         if t == F64: return F64T
         if t == VOID: return VOIDT
+        if is_csr(t): return CSR
         if isinstance(t, (Vec, StackVec)): return VEC
         if isinstance(t, FixedList): return ir.ArrayType(self.lt(t.elem, node), t.n)
         if isinstance(t, (Ptr,)): return PTR
@@ -322,7 +324,10 @@ class FnGen:
             self.err(f"cannot infer the type of local '{name}'", self.fi.node)
         slot = self.alloca(self.lt(t, self.fi.node), name)
         self.slots[name] = (slot, t)
-        if isinstance(t, (Vec, StackVec)):
+        if is_csr(t):
+            self.store_vec_header(self.entry_b, self.csr_data(slot, self.entry_b), ir.Constant(PTR, None), 0, 0)
+            self.store_vec_header(self.entry_b, self.csr_offs(slot, self.entry_b), ir.Constant(PTR, None), 0, 0)
+        elif isinstance(t, (Vec, StackVec)):
             buf = PTR(None) if False else ir.Constant(PTR, None)
             if isinstance(t, StackVec):
                 arr = self.alloca(ir.ArrayType(self.lt(t.elem), t.max_n), name + ".buf")
@@ -330,6 +335,16 @@ class FnGen:
             else:
                 cap = 0
             self.store_vec_header(self.entry_b, slot, buf, 0, cap)
+
+    def csr_data(self, slot, b=None):
+        return (b or self.b).gep(slot, [ci(0), ci(0)], inbounds=True, source_etype=CSR)
+
+    def csr_offs(self, slot, b=None):
+        return (b or self.b).gep(slot, [ci(0), ci(1)], inbounds=True, source_etype=CSR)
+
+    def free_csr(self, slot) -> None:
+        self.free_vec(self.csr_data(slot))
+        self.free_vec(self.csr_offs(slot))
 
     def store_vec_header(self, b, slot, ptr, n, cap) -> None:
         vals = [x if isinstance(x, ir.Value) else ci(x, I64T) for x in (ptr, n, cap)]
@@ -392,7 +407,11 @@ class FnGen:
         self.store_to(slot, t, val, fresh_ok=True)
 
     def reset_vec(self, slot, t) -> None:
-        if isinstance(t, Vec):
+        if is_csr(t):
+            self.free_csr(slot)
+            self.store_vec_header(self.b, self.csr_data(slot), ir.Constant(PTR, None), 0, 0)
+            self.store_vec_header(self.b, self.csr_offs(slot), ir.Constant(PTR, None), 0, 0)
+        elif isinstance(t, Vec):
             self.free_vec(slot)
             self.store_vec_header(self.b, slot, ir.Constant(PTR, None), 0, 0)
         else:
@@ -415,8 +434,16 @@ class FnGen:
         src = self.addr(val)
         if isinstance(t, (Vec, StackVec)):
             fresh = (isinstance(val, ast.Call) and not (isinstance(val.func, ast.Name) and val.func.id == "mut")) \
-                or (isinstance(val, ast.BinOp) and isinstance(t, Vec))
-            if isinstance(t, Vec) and fresh and fresh_ok:
+                or (isinstance(val, ast.BinOp) and isinstance(t, Vec)) \
+                or (isinstance(val, ast.List) and is_csr(t))
+            if is_csr(t):
+                if fresh and fresh_ok:
+                    self.free_csr(ptr)
+                    self.memcpy(ptr, src, 48)
+                else:
+                    self.vec_assign(self.csr_data(ptr), resolve(t.elem), self.csr_data(src), resolve(resolve(self.ty(val)).elem))
+                    self.vec_assign(self.csr_offs(ptr), Vec(I64), self.csr_offs(src), Vec(I64))
+            elif isinstance(t, Vec) and fresh and fresh_ok:
                 self.free_vec(ptr)
                 self.memcpy(ptr, src, 24)
             else:
@@ -519,7 +546,10 @@ class FnGen:
             loc = self.fi.locals.get(name)
             if loc and name not in self.fi.params and isinstance(t, Vec) and not loc.escapes \
                     and name not in self.returned:
-                self.free_vec(slot)
+                if is_csr(t):
+                    self.free_csr(slot)
+                else:
+                    self.free_vec(slot)
         rt = self.fn.function_type.return_type
         if rt == VOIDT:
             self.b.ret_void()
@@ -559,6 +589,16 @@ class FnGen:
         it = s.iter
         if isinstance(it, ast.Call) and isinstance(it.func, ast.Name) and it.func.id == "range":
             return self.for_range(s, slot, vt)
+        if is_csr(self.ty(it)):
+            base = self.addr(it)
+            elem_t = resolve(self.ty(it).elem).elem
+            nrows = self.csr_nrows(base)
+            idx = self.alloca(I64T, "row_i")
+            self.b.store(ci(0, I64T), idx)
+            self.loop(s, lambda: self.b.icmp_signed("<", self.b.load(idx, typ=I64T), nrows),
+                      lambda: self.b.store(self.csr_row_view_val(base, elem_t, self.b.load(idx, typ=I64T), s, check=False), slot),
+                      lambda: self.b.store(self.b.add(self.b.load(idx, typ=I64T), ci(1, I64T)), idx))
+            return
         ptr, n, elem = self.seq_view(it)
         idx = self.alloca(I64T, "i")
         self.b.store(ci(0, I64T), idx)
@@ -618,6 +658,8 @@ class FnGen:
     def append(self, e: ast.Call) -> None:
         recv = e.func.value
         t = self.ty(recv)
+        if is_csr(t):
+            return self.csr_append_row(self.addr(recv), t, e.args[0])
         if not isinstance(t, (Vec, StackVec)):
             self.err("append() requires a list built from []", e)
         base = self.addr(recv)
@@ -633,6 +675,92 @@ class FnGen:
         else:
             b.store(self.coerce(self.value(e.args[0]), self.ty(e.args[0]), t.elem), ep)
         b.store(b.add(n, ci(1, I64T)), hp(1))
+
+    def csr_nrows(self, base):
+        b = self.b
+        offs_h = self.csr_offs(base)
+        olen = b.load(b.gep(offs_h, [ci(0), ci(1)], inbounds=True, source_etype=VEC), typ=I64T)
+        return b.select(b.icmp_signed(">", olen, ci(0, I64T)), b.sub(olen, ci(1, I64T)), ci(0, I64T))
+
+    def csr_row_view_val(self, base, elem_t: Type, idx, node, check: bool = True):
+        b = self.b
+        if check:
+            self.check_index(idx, self.csr_nrows(base), node)
+        offs_h = self.csr_offs(base)
+        op = b.load(b.gep(offs_h, [ci(0), ci(0)], inbounds=True, source_etype=VEC), typ=PTR)
+        start = b.load(b.gep(op, [idx], inbounds=True, source_etype=I64T), typ=I64T)
+        end = b.load(b.gep(op, [b.add(idx, ci(1, I64T))], inbounds=True, source_etype=I64T), typ=I64T)
+        dp = b.load(b.gep(self.csr_data(base), [ci(0), ci(0)], inbounds=True, source_etype=VEC), typ=PTR)
+        rp = b.gep(dp, [start], inbounds=True, source_etype=self.lt(elem_t))
+        v = b.insert_value(ir.Constant(VIEW, ir.Undefined), rp, 0)
+        return b.insert_value(v, b.sub(end, start), 1)
+
+    def _ensure_vec_cap(self, vec_slot, need, elem_size: int) -> None:
+        b = self.b
+        hp = lambda i: b.gep(vec_slot, [ci(0), ci(i)], inbounds=True, source_etype=VEC)
+        cap = b.load(hp(2), typ=I64T)
+        grow, cont = self.fn.append_basic_block("csr_grow"), self.fn.append_basic_block("csr_grown")
+        b.cbranch(b.icmp_signed(">", need, cap), grow, cont)
+        b.position_at_end(grow)
+        doubled = b.select(b.icmp_signed("==", cap, ci(0, I64T)), ci(16, I64T), b.mul(cap, ci(2, I64T)))
+        newcap = b.select(b.icmp_signed(">", need, doubled), need, doubled)
+        newp = b.call(self.mg.realloc, [b.load(hp(0), typ=PTR), b.mul(newcap, ci(elem_size, I64T))])
+        b.store(newp, hp(0))
+        b.store(newcap, hp(2))
+        b.branch(cont)
+        b.position_at_end(cont)
+
+    def csr_append_row(self, base, csr_t: Type, row_expr) -> None:
+        b = self.b
+        elem_t = resolve(csr_t.elem).elem
+        data_h, offs_h = self.csr_data(base), self.csr_offs(base)
+        dh = lambda i: b.gep(data_h, [ci(0), ci(i)], inbounds=True, source_etype=VEC)
+        oh = lambda i: b.gep(offs_h, [ci(0), ci(i)], inbounds=True, source_etype=VEC)
+        dlen = b.load(dh(1), typ=I64T)
+        if isinstance(row_expr, ast.List) and not row_expr.elts:
+            new_dlen = dlen
+        else:
+            rptr, rn, relem = self.seq_view(row_expr)
+            new_dlen = b.add(dlen, rn)
+            self._ensure_vec_cap(data_h, new_dlen, elem_t.size)
+            dp = b.load(dh(0), typ=PTR)
+            dst = b.gep(dp, [dlen], inbounds=True, source_etype=self.lt(elem_t))
+            if relem == elem_t:
+                self.memcpy(dst, rptr, b.mul(rn, ci(elem_t.size, I64T)))
+            else:
+                # Element-wise coercion (e.g. appending i64 row into Vec[Vec[f64]])
+                idx = self.alloca(I64T, "ci")
+                b.store(ci(0, I64T), idx)
+                c_bb, b_bb, e_bb = (self.fn.append_basic_block(k) for k in ("c_cond", "c_body", "c_end"))
+                b.branch(c_bb)
+                b.position_at_end(c_bb)
+                iv = b.load(idx, typ=I64T)
+                b.cbranch(b.icmp_signed("<", iv, rn), b_bb, e_bb)
+                b.position_at_end(b_bb)
+                sv = b.load(b.gep(rptr, [iv], inbounds=True, source_etype=self.lt(relem)), typ=self.lt(relem))
+                b.store(self.coerce(sv, relem, elem_t), b.gep(dst, [iv], inbounds=True, source_etype=self.lt(elem_t)))
+                b.store(b.add(iv, ci(1, I64T)), idx)
+                b.branch(c_bb)
+                b.position_at_end(e_bb)
+            b.store(new_dlen, dh(1))
+        # Append new_dlen to offsets (initializing offsets[0] = 0 on first row)
+        olen = b.load(oh(1), typ=I64T)
+        init_bb, push_bb, done_bb = (self.fn.append_basic_block(k) for k in ("off_init", "off_push", "off_done"))
+        b.cbranch(b.icmp_signed("==", olen, ci(0, I64T)), init_bb, push_bb)
+        b.position_at_end(init_bb)
+        self._ensure_vec_cap(offs_h, ci(2, I64T), 8)
+        op0 = b.load(oh(0), typ=PTR)
+        b.store(ci(0, I64T), b.gep(op0, [ci(0, I64T)], inbounds=True, source_etype=I64T))
+        b.store(new_dlen, b.gep(op0, [ci(1, I64T)], inbounds=True, source_etype=I64T))
+        b.store(ci(2, I64T), oh(1))
+        b.branch(done_bb)
+        b.position_at_end(push_bb)
+        self._ensure_vec_cap(offs_h, b.add(olen, ci(1, I64T)), 8)
+        op1 = b.load(oh(0), typ=PTR)
+        b.store(new_dlen, b.gep(op1, [olen], inbounds=True, source_etype=I64T))
+        b.store(b.add(olen, ci(1, I64T)), oh(1))
+        b.branch(done_bb)
+        b.position_at_end(done_bb)
 
     def grow_if_full(self, base, hp, n, t) -> None:
         b = self.b
@@ -871,6 +999,9 @@ class FnGen:
     def v_Subscript(self, e):
         if isinstance(e.slice, ast.Slice):
             return self.str_slice(e)
+        bt = self.ty(e.value)
+        if is_csr(bt) and not isinstance(e.slice, ast.Tuple):
+            return self.csr_row_view_val(self.addr(e.value), resolve(bt.elem).elem, self.index_value(e.slice), e)
         t = self.ty(e)
         return self.b.load(self.addr_of(e), typ=self.lt(t, e))
 
@@ -927,6 +1058,8 @@ class FnGen:
 
     # ---- intrinsics --------------------------------------------------
     def i_len(self, e):
+        if is_csr(self.ty(e.args[0])):
+            return self.csr_nrows(self.addr(e.args[0]))
         _, n, _ = self.seq_view(e.args[0])
         return n
 
@@ -1148,6 +1281,13 @@ class FnGen:
 
     def a_List(self, e):
         t = self.ty(e)
+        if is_csr(t):
+            tmp = self.alloca(CSR, "csr_lit")
+            self.store_vec_header(self.b, self.csr_data(tmp), ir.Constant(PTR, None), 0, 0)
+            self.store_vec_header(self.b, self.csr_offs(tmp), ir.Constant(PTR, None), 0, 0)
+            for row in e.elts:
+                self.csr_append_row(tmp, t, row)
+            return tmp
         if not isinstance(t, FixedList):
             self.err("list literal exceeds the 64KB stack limit; build it with append()", e)
         tmp = self.alloca(self.lt(t, e), "lit")
@@ -1226,6 +1366,13 @@ class FnGen:
         if isinstance(e.slice, ast.Slice):
             self.err("slices are not supported (use span(arr, start, len))", e)
         base_t = self.ty(e.value)
+        if is_csr(base_t) and isinstance(e.slice, ast.Tuple) and len(e.slice.elts) == 2:
+            elem_t = resolve(base_t.elem).elem
+            view = self.csr_row_view_val(self.addr(e.value), elem_t, self.index_value(e.slice.elts[0]), e)
+            rptr, rlen = self.b.extract_value(view, 0), self.b.extract_value(view, 1)
+            j = self.index_value(e.slice.elts[1])
+            self.check_index(j, rlen, e)
+            return self.b.gep(rptr, [j], inbounds=True, source_etype=self.lt(elem_t))
         ptr, n, elem = self.seq_view(e.value)
         idxs = e.slice.elts if isinstance(e.slice, ast.Tuple) else [e.slice]
         idx = self.index_value(idxs[0])
