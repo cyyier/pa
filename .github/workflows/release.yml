@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tag matches the package version
+        run: |
+          VERSION=$(python -c "import re,pathlib; print(re.search(r'__version__ = \"(.+?)\"', pathlib.Path('pa_lang/__init__.py').read_text()).group(1))")
+          test "v$VERSION" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} != version v$VERSION"; exit 1; }
+      - run: python -m pip install -e ".[dev,release,web]" numpy pillow
+      - run: pytest -q
+      - run: python -m build && twine check dist/*
+      - run: npm ci && npx @vscode/vsce package -o ../dist/pa-lang-${GITHUB_REF_NAME#v}.vsix
+        working-directory: vscode-pa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+
+  github-release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write          # PyPI trusted publishing (no API token stored in the repo)
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - run: rm -f dist/*.vsix
+      - uses: pypa/gh-action-pypi-publish@release/v1

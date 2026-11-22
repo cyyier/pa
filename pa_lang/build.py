@@ -87,6 +87,10 @@ def compile_pa(path: str, out: Optional[str] = None, shared: bool = False, emit_
         raise BuildError(f"{path}:{e.line}: error PA_E100: {e}")
     if emit_ir:
         return ir_text
+    if sys.platform != "linux" and not os.environ.get("PA_ALLOW_UNSUPPORTED_PLATFORM"):
+        raise BuildError(f"pac build supports Linux only for now (platform: {sys.platform}); "
+                         "`pac check`, `pac lsp` and `pac build --emit-ir` work everywhere. "
+                         "Set PA_ALLOW_UNSUPPORTED_PLATFORM=1 to try anyway.")
     out = out or os.path.splitext(path)[0] + (".so" if shared else "")
     with tempfile.TemporaryDirectory() as tmp:
         obj = os.path.join(tmp, "pa_prog.o")

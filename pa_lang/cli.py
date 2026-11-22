@@ -74,6 +74,8 @@ def cmd_lsp(args) -> int:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="pac", description="Pa language compiler")
+    from . import __version__
+    ap.add_argument("--version", action="version", version=f"pac {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("check", help="front-end checks")
     c.add_argument("paths", nargs="+")

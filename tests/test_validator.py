@@ -23,22 +23,36 @@ def test_third_party_import_blocked_but_paw_allowed(tmp_path):
     assert check_source("import np_ops\n", "main.pa", search_dirs=[str(tmp_path)]) == []
 
 
-def test_py_call_in_loop_blocked():
-    src = 'def f(n):\n    for i in range(n):\n        r = py_call("w.fn", i)\n    return 0\n'
-    assert "PA_E002" in codes(src)
-    src = 'def f(n):\n    i = 0\n    while i < n:\n        r = py_call("w.fn", i)\n        i = i + 1\n    return 0\n'
-    assert "PA_E002" in codes(src)
+PAW = "def fn(x: f64) -> f64:\n    return x\n\ndef batch_fn(xs: span[f64]) -> f64:\n    return 0.0\n"
 
 
-def test_py_call_in_loop_via_helper_blocked():
-    src = ('def helper(x):\n    return py_call("w.fn", x)\n'
-           'def f(n):\n    for i in range(n):\n        r = helper(i)\n    return 0\n')
-    assert "PA_E002" in codes(src)
+def with_paw(tmp_path, src):
+    (tmp_path / "w.paw").write_text(PAW)
+    return [d.code for d in check_source(src, "main.pa", search_dirs=[str(tmp_path)])]
 
 
-def test_batched_py_call_ok():
-    src = ('def f(n):\n    batch = [1.0, 2.0]\n    r = py_call("w.fn", batch)\n    for i in range(n):\n        x = i\n    return 0\n')
-    assert codes(src) == []
+def test_paw_call_in_loop_blocked(tmp_path):
+    for_loop = "import w\n\ndef f(n) -> int:\n    for i in range(n):\n        r = w.fn(1.0)\n    return 0\n"
+    while_loop = "import w\n\ndef f(n) -> int:\n    i = 0\n    while i < n:\n        r = w.fn(1.0)\n        i = i + 1\n    return 0\n"
+    assert "PA_E002" in with_paw(tmp_path, for_loop)
+    assert "PA_E002" in with_paw(tmp_path, while_loop)
+
+
+def test_paw_call_in_loop_via_helper_blocked(tmp_path):
+    src = ("import w\n\ndef helper(x) -> float:\n    return w.fn(x)\n\n"
+           "def f(n) -> int:\n    for i in range(n):\n        r = helper(1.0)\n    return 0\n")
+    assert "PA_E002" in with_paw(tmp_path, src)
+
+
+def test_batched_paw_call_ok(tmp_path):
+    src = ("import w\n\ndef f(n) -> int:\n    batch = [1.0, 2.0]\n    r = w.batch_fn(batch)\n"
+           "    for i in range(n):\n        x = i\n    return 0\n")
+    assert with_paw(tmp_path, src) == []
+
+
+def test_py_call_is_gone_and_points_to_paw():
+    d = check_source('def f() -> int:\n    r = py_call("w.fn", 1)\n    return 0\n', "t.pa")
+    assert [x.code for x in d] == ["PA_E003"] and ".paw" in d[0].summary
 
 
 def test_banned_syntax():
@@ -122,13 +136,6 @@ def test_paw_signature_rules():
     assert codes("def f(x: dict) -> f64:\n    return 1.0\n", "a.paw") == ["PA_E082"]
     assert codes("def _private(x):\n    return x\n", "a.paw") == []
     assert codes("def f(x: f64) -> list[f64, 4]:\n    return x\n", "a.paw") == ["PA_E082"]
-
-
-def test_paw_call_in_loop_blocked(tmp_path):
-    (tmp_path / "w.paw").write_text("def f(a: f64) -> f64:\n    return a\n")
-    src = "import w\ndef g(n):\n    for i in range(n):\n        x = w.f(1.0)\n    return 0\n"
-    d = check_source(src, "main.pa", search_dirs=[str(tmp_path)])
-    assert "PA_E002" in [x.code for x in d]
 
 
 def test_syntax_error_reports_e000():

@@ -1,140 +1,981 @@
-Pa Language (.pa) — 完整架构与工程规范Slogan: Inspired by Python, 100% Python-syntax compatible. Written by AI, auditable by humans.一、 核心定位与双模式架构哲学Pa (.pa) 是一门 100% 兼容 Python 语法、函数体内零类型噪音、严格遵循 C++ 连续内存布局与 RAII 零 GC 模型、通过 LLVM 编译为原生机器码的系统级编程语言。1. 默认模式：Host-First 混合架构（CLI / 后台服务 / 数据流水线）彻底反转“新语言给 Python 当 C 扩展插件”的传统做法，确立 .pa 统领全局、.py 降级为沙盒工具箱 的主从架构：主宿主脊梁（main.pa & <domain>.pa — Sovereign Spine）：掌控 main() 入口、程序主循环、业务状态机与所有计算密集型逻辑。严禁直接 import 任何第三方 Python 动态库（如 requests、pandas、sqlalchemy）。外部沙盒工具箱（py_workers/<tool>.py — Stateless In -> Out Adapters）：纯粹的无状态辅助函数，仅在需要调用 Python 第三方生态库时由 .pa 通过内置原语 py_call 按需调用。所有动态对象（DataFrame、Response、ORM 实例）必须在 py_workers/ 内部创建、解析并销毁，绝不泄漏到 .pa。批处理铁律（Batching Rule）：严禁在 .pa 的紧凑循环（for / while）内直接调用 py_call。必须在 .pa 侧打包批量输入，单次跨越边界交由 py_workers/ 批处理后返回批量结果。2. 例外模式：🌐 Web / UI 框架控制反转（Frontend-Driven Apps）当项目依赖自带主事件循环的 Python Web/UI 框架（FastAPI、Flask、Django、Streamlit、Gradio）时：不强行用 .pa 包裹事件循环：保留 .py 框架作为极薄的 “HTTP/UI 路由外壳（Thin Router Shell）”，仅负责路由分发、鉴权中间件与前端渲染。100% 业务逻辑下沉 .pa：.py 路由函数内部零业务逻辑，标准三步流水线为：提取请求原始参数 (Clean In) -> 调用 @export 编译的 .pa 领域函数 -> 序列化返回值 (Clean Out) 响应前端。若 .pa 领域逻辑仍需外部库，依旧走 py_workers/ 隔离。二、 边界契约与可调试性铁律（Boundary Contract & Debuggability）为杜绝跨语言静默数据污染与互相甩锅，每一次 .pa $\leftrightarrow$ .py 跨越均执行强制双向安检：双向海关安检（Zero Silent Corruption）：出境安检（.pa -> py_workers）：pa_py_call 跨越前校验所有字段已初始化、无 NaN/Inf（除非显式 @allow_nan）、长度未越界。入境安检（py_workers -> .pa）：所有 py_workers/*.py 函数必须挂载由 AI 自动生成的 @pa_worker_contract(...) 装饰器，返回瞬间立即拦截 None、NaN/Inf 或字段类型漂移。Fail-Fast 黑匣子崩溃报告（pa_boundary_fault.json）：任意边界违例立即熔断，输出包含 direction（PA_TO_PY_IN / PY_TO_PA_OUT）、worker、violation（精确字段路径与非法值）以及 in_payload_snapshot（触发本次调用的完整 In 快照）的 JSON 报告。5 秒二分定责协议（Deterministic Bisection）：每个 .pa 模块与 py_workers/*.py 均配备纯原始类型/JSON 的 In -> Out 固件测试（tests/fixtures/<module>_io.json）。排障时直接拿 in_payload_snapshot 单独重放 py_workers：输入合法但输出错 = 100% .py 工人锅；工人输出全对但终态错 = 100% .pa 核心锅。三、 前端干净子集与编译器内置原语1. 语法白名单与黑名单维度允许（白名单）禁止（黑名单 / 触发自愈工单）类型标注仅在模块级 @struct 字段定义与 @export 跨语言入口处标注；普通函数体内 100% 零类型注解（全靠静态推导）函数体内手写冗余类型注解、Any、Union、Optional数据类型i64(默认整数), i32, i64, u8, f32, f64(默认浮点), bool, void, str_view/bytes_view ({u8*, i64}), 同构定长/动态列表, @struct异构列表 [1, "a", True]、动态 dict、set、tuple内置原语显式注册为 Compiler Intrinsics：py_call、mut(x)、span(arr, start, len)、copy(dst, src, count)、alloc(T, n)、free(p)Python 隐式堆切片 arr[1:5]、列表拼接 a + b、.extend()控制流与可读性if/elif/else、for i in range(...)、while、卫语句提前 return；单函数 ≤ 40 行，圈复杂度 ≤ 8，嵌套 ≤ 3 层；参数 > 2 个必须用关键字参数try/except、yield、闭包、lambda、eval/exec、元类、反射、*args/**kwargs2. C++ 一致拷贝与借用语义值语义赋值（b = a）：对连续数组、@struct、Vec<T> 执行完整深层连续拷贝（llvm.memcpy），b 与 a 内存完全独立（单次栈拷贝超 4KB 发 PA_W001 警告）；禁止 ptr[T] 裸赋值别名（防 Double Free）。默认只读借用（const T& vs T&）：容器与结构体传参默认零拷贝只读借用；函数体内若需修改元素或 .append()，调用处必须显式包裹 mut(arr)。四、 逃逸分析与连续内存分级铁律（Zero Pointer-Chasing, Zero GC）彻底封杀 Python PyObject* 指针数组，所有列表均按三级决策树编译为连续平坦内存：Level 1 — 留在栈上（Stack Allocation，0 堆开销）：所有标量、@struct、编译期定长同构列表 list[T, N]（映射为 LLVM [N x T]，多维嵌套直接打平，总大小 ≤ 64KB）。逃逸分析命中的动态列表（StackBoundedVec[T, MAX_N]）：对 res = [] + res.append(x)，若 res 不逃逸出当前函数且写入次数存在已知常量上界 MAX_N（且 ≤ 64KB），直接在栈上 alloca [MAX_N x T] + 局部计数器 len，.append() 编译为指针偏移写入 + len += 1，零 malloc/free。Level 2 — 连续堆数组 Vec<T>（RAII 确定性释放，0 GC 停顿）：上限不可静态预测、作为返回值逃逸、或超过 64KB 栈阈值的同构动态列表，自动降级为 { T* ptr, i64 len, i64 cap } 连续三元组（初始 cap=16，满容 2 倍 realloc）。未逃逸时在函数所有 return 出口前自动插桩 free(ptr)；逃逸返回时所有权移交调用者作用域负责 free。Level 3 — 红牌拦截，逼 AI 升级重构（Hard Compile Error）：异构列表（[1, "apple", True]） $\rightarrow$ 报 PA_E030，输出 @struct 重构手术单，将二维混合表自动进化为连续结构体数组 Vec<Record>（AoS，缓存命中率 100%）。无法推导元素类型的空列表 $\rightarrow$ 报 PA_E011；局部变量 span 逃逸返回（悬空指针） $\rightarrow$ 报 PA_E040；显式 alloc 漏 free 或 UAF $\rightarrow$ 报 PA_E004。五、 AI 自主审查诊断协议与 VS Code 透视1. --ai-diagnostic 结构化自愈工单编译器报错首要面向 Coding Agent，输出自包含 JSON 工单：必备字段：code、category、severity、skill_rule_ref、location、summary、inferred_context（推导出的底层类型与布局）、causal_chain（从定义到违例的完整因果链）、source_context（带行号上下 3 行源码切片）、repair_plan（含 strategy、anti_patterns_to_avoid 禁止反模式、suggested_patches 确定性替换代码）。2. VS Code LSP 透明透视（pac lsp）Inlay Hints（行内虚拟提示）：在无注解源码旁实时渲染半透明类型与内存策略，如 : list[f64, 16] (128B flat)、: StackVec<i64, max=64> (Zero-Heap)、: Vec<Record> (RAII)、[memcpy 128B]、: const list[f64, 16]&。Hover（鼠标悬浮审计卡片）：悬停展示 LLVM IR 布局、精确字节大小与步长、栈/堆归属、RAII 自动释放行号、函数圈复杂度。六、 三大内置 AI 技能矩阵 (skills/)技能包适用场景核心工作流与门禁pa-coder从头编写新项目按 Host-First（或 Web Router Shell）搭骨架；用 DOD/AoS 连续内存写零注解 .pa；第三方库隔离至 py_workers/ + @pa_worker_contract；跑 pac check --ai-diagnostic 自愈。py-to-pa现有 Python 仓库重构加速先过三色灯熔断门禁（Feasibility Gate）：• 🟢 绿灯：纯计算/无外部依赖 $\rightarrow$ 全量转 .pa。• 🟡 黄灯：含第三方库或 Web 框架 $\rightarrow$ 反转控制权（.pa 宿主 + py_workers/）或保留极薄 Web 路由壳。• 🔴 红灯：重度元编程/动态框架强耦合无法剥离 $\rightarrow$ 立即熔断拒单（STATUS: RED - Keep in .py worker layer + 一句话卡点）。过审后生成双端对拍测试与耗时报告。cpp-to-pa遗留 C++ 安全现代化将 std::array/std::vector/struct/std::span/const T& 剥离宏与裸指针，1:1 无损重构为纯净 .pa，双二进制 Fuzzing 字节级对拍。七、 项目目录结构与两阶段开发路线Plaintextpa/
-├── pyproject.toml              # 依赖: llvmlite, pygls, pytest; 入口: pac = "pa_lang.cli:main"
-├── ARCHITECTURE.md             # 本文档（项目最高宪法）
-├── pa_lang/
-│   ├── __init__.py
-│   ├── cli.py                  # pac check [--ai-diagnostic] / pac build [-o bin | --shared] / pac lsp
-│   ├── types.py                # 连续内存类型系统 & Compiler Intrinsics 注册表
-│   ├── infer.py                # 零注解双向类型推导 + 栈上界逃逸分析 + Vec<T> 升级
-│   ├── diagnostics.py          # AI 自主审查 JSON 修复工单与 @struct 手术单引擎
-│   ├── validator.py            # Host 边界隔离 / 批处理校验 / C++ 拷贝借用 / 可读性铁律
-│   ├── codegen.py              # llvmlite IR 生成 (显式声明 malloc/realloc/free/pa_py_call & llvm.memcpy)
-│   ├── runtime_bridge.c        # 极简内嵌 CPython 桥接与边界安检运行时
-│   └── lsp_server.py           # pygls Inlay Hints + Hover 内存审计 + 实时诊断
-├── skills/
-│   ├── pa-coder/SKILL.md
-│   ├── py-to-pa/SKILL.md
-│   └── cpp-to-pa/SKILL.md
-├── examples/
-│   └── pipeline_demo/
-│       ├── main.pa             # Pa 主宿主示例
-│       └── py_workers/
-│           └── data_fetcher.py # 带 @pa_worker_contract 的沙盒工人
-└── tests/
-    ├── test_infer.py
-    ├── test_validator.py
-    └── test_codegen.py
-两阶段执行策略（防上下文截断）第一枪（前端与宪法落地）：完成骨架 + types.py + infer.py + diagnostics.py + validator.py + test_infer.py + test_validator.py，确保零注解推导、栈上界分析、PA_E030 手术单、第三方库 import 拦截与循环内 py_call 拦截 100% 绿灯。第二枪（后端、桥接、LSP 与技能包）：完成 codegen.py（顶部显式声明 libc 与 bridge 符号）+ runtime_bridge.c + cli.py（同时支持独立二进制与 --shared 供 Web 路由壳调用）+ lsp_server.py + 三大 SKILL.md + pipeline_demo + test_codegen.py 端到端实测验证。
+# Pa — Architecture & Engineering Specification
+
+> **Inspired by Python, 100 % Python-syntax compatible. Written by AI, auditable by humans.**
+
+Pa (`.pa`) is a systems language whose source files are valid Python syntax. Function bodies carry no type noise
+(types are inferred), data lives in contiguous C++-style memory with deterministic RAII and no garbage collector, and
+the code is compiled through LLVM to native machine code. The Python ecosystem is reached through typed, checked,
+replayable bridge modules (`.paw`).
+
+| | |
+|---|---|
+| Version | 0.1.0 (alpha: the language and ABI may still change) |
+| License | MIT |
+| Platform | Linux x86-64, CPython 3.11–3.13 (headers + shared `libpython`), `gcc` |
+| Toolchain | `pac` (check, build, lsp, doctor, bundle), VS Code extension, three AI skills |
+
+## Contents
+
+1. [Design principles](#1-design-principles)
+2. [Source files and the two-zone architecture](#2-source-files-and-the-two-zone-architecture)
+3. [The clean Python subset](#3-the-clean-python-subset)
+4. [Type system](#4-type-system)
+5. [Memory model](#5-memory-model)
+6. [Runtime semantics and faults](#6-runtime-semantics-and-faults)
+7. [The `.paw` boundary](#7-the-paw-boundary)
+8. [Compiler architecture](#8-compiler-architecture)
+9. [Diagnostics for AI agents](#9-diagnostics-for-ai-agents)
+10. [Tooling](#10-tooling)
+11. [AI skills](#11-ai-skills)
+12. [Repository layout](#12-repository-layout)
+13. [Testing and verification](#13-testing-and-verification)
+14. [Platform support, limits and roadmap](#14-platform-support-limits-and-roadmap)
+
+> **Inspired by Python, 100 % Python-syntax compatible. Written by AI, auditable by humans.**
+
+Pa (`.pa`) is a systems language whose source files are valid Python syntax. Function bodies carry no type noise
+(types are inferred), data lives in contiguous C++-style memory with deterministic RAII and no garbage collector, and
+the code is compiled through LLVM to native machine code. The Python ecosystem is reached through typed, checked,
+replayable bridge modules (`.paw`).
+
+| | |
+|---|---|
+| Version | 0.1.0 (alpha: the language and ABI may still change) |
+| License | MIT |
+| Platform | Linux, CPython 3.11–3.13 (headers + shared `libpython`), `gcc` |
+| Toolchain | `pac` (check, build, lsp, doctor, bundle), VS Code extension, three AI skills |
+
+## Contents
+
+1. [Design principles](#1-design-principles)
+2. [Source files and the two-zone architecture](#2-source-files-and-the-two-zone-architecture)
+3. [The clean Python subset](#3-the-clean-python-subset)
+4. [Type system](#4-type-system)
+5. [Memory model](#5-memory-model)
+6. [Runtime semantics and faults](#6-runtime-semantics-and-faults)
+7. [The `.paw` boundary](#7-the-paw-boundary)
+8. [Compiler architecture](#8-compiler-architecture)
+9. [Diagnostics for AI agents](#9-diagnostics-for-ai-agents)
+10. [Tooling](#10-tooling)
+11. [AI skills](#11-ai-skills)
+12. [Repository layout](#12-repository-layout)
+13. [Testing and verification](#13-testing-and-verification)
+14. [Platform support, limits and roadmap](#14-platform-support-limits-and-roadmap)
 
 ---
 
-## 修订 R1：`.paw` 跨界区取代 `py_workers/*.py`（本节优先于前文）
+## 1. Design principles
 
-| 后缀 | 职责 | 规则 |
+1. **Python syntax, zero type noise.** Every `.pa` file parses with `ast.parse`. Function bodies are never annotated;
+   types come from bidirectional inference.
+2. **Contiguous memory, deterministic lifetime.** Lists are flat arrays (`[N x T]`, `{T*, len, cap}`), never arrays of
+   `PyObject*`. Heap storage is freed by RAII at scope exit; there is no GC and no reference counting.
+3. **Host-first.** Pa owns `main()`, the control flow and all compute. Python libraries are a sandboxed tool box
+   behind a locked boundary, not the other way round.
+4. **The boundary is first-class.** Every crossing is typed, checked in both directions, and reproducible from a JSON
+   report (no silent data corruption, no finger-pointing between languages).
+5. **Compiler messages are written for AI agents.** Diagnostics are self-contained JSON repair tickets with a causal
+   chain and deterministic patches.
+6. **Safe by default, lean on demand.** `--mode dev` bounds-checks and deep-lints; `--mode prod` removes the cost.
+
+---
+
+## 2. Source files and the two-zone architecture
+
+| Suffix | Zone | Contents and rules |
 |---|---|---|
-| `*.pa` | 纯血原生区，100% 编译为 LLVM 机器码 | 禁止 import 第三方 Python 库（`PA_E001`）；只可 import `pa` / `pa_lang` 与同项目的 `.paw`；函数体零类型注解 |
-| `*.paw` | 跨界安检区，标准 Python | 可随意 import numpy/pandas/requests；所有公开（非 `_` 开头）函数必须写死静态 In -> Out 签名（`PA_E080`/`PA_E082`），相当于 C 的 `.h` |
+| `*.pa` | **Native zone** — 100 % compiled to LLVM machine code | Pure Pa subset. May import only `pa`, `pa_lang` and project-local `.paw` modules (`PA_E001` otherwise). No third-party Python imports. |
+| `*.paw` | **Crossing zone** — runs in an embedded CPython | Standard Python: import numpy, pandas, requests, PIL, … The only hard rule: every public (non-`_`) function has a fully annotated, static **In → Out signature**, which plays the role of a C header. |
+| `*.py` | **Thin shell** (optional) | For frameworks that own the event loop (FastAPI, Flask, Django, Streamlit, Gradio). Contains no business logic. |
 
-- **边界类型**：入参 `i32 i64 u8 f32 f64 bool str_view span[T] list[T,N] Vec[T]`（T 为数值标量）；返回 `标量 | Vec[T] | void`。
-- **前端**：`infer.py` 遇到 `import x` 且存在 `x.paw` 时，只解析其顶层函数签名并注册进符号表，`x.f(arr)` 的返回类型静态推导；实参不匹配报 `PA_E090`。
-- **后端**：`codegen.py` 不编译 `.paw`；调用点生成封送桩 → `pa_call_paw(mod, fn, args, nargs, ret_tag, ret_elem, &ret)`（`runtime_bridge.c`）。连续内存以 `PyMemoryView_FromMemory` 零拷贝递给 Python。
-- **双向安检**：出境查 NaN/Inf/NULL/负长度；入境查 None/NaN/Inf/类型漂移/整数越界/异常；违例写 `pa_boundary_fault.json`（`direction`、`worker`、`violation`、`in_payload_snapshot`）并以退出码 70 熔断。`.paw` 不再需要 `@pa_worker_contract` 装饰器。
-- **批处理铁律不变**：循环内调用 `.paw`（或经 helper 间接调用）报 `PA_E002`。
-- **LSP**：`.paw` 调用点行内标注 `[🌉 .paw FFI -> f64]`。
-- **目录**：`examples/pipeline_demo/{main.pa, data_fetcher.paw}`；构建期把 `sys.base_prefix`、`sys.path` 与 `.paw` 目录烘焙进 `runtime_bridge.o`（可用 `PA_PATH` 环境变量追加 `.paw` 搜索目录）。
-- **ABI（`pac build --shared`）**：`@export` 函数以原名导出；标量按值传递，`list[T,N]` 传元素首地址，`Vec[T]` 传指向 `{T*, i64 len, i64 cap}` 的指针，`span[T]` 传 `{T*, i64}` 值。
+### 2.1 Default mode: Host-First
 
-### 已知限制
-- `x = []` 只经 `mut(x)` 传给被调函数时，元素类型取自被调函数里对该形参的 `append`（一层，不跨多层转手）；从未被追加则仍报 `PA_E011`。
-- 整数除法 `//` 与 `%` 为 C 语义（向零截断），与 Python 在负数上不同。
-- 代码生成器目前不支持：字符串切片、`str` 跨 `.paw` 返回、结构体跨 `.paw` 边界。
+`main.pa` (and optional `<domain>.pa` modules) own `main()`, the program loop, state machines and every compute-heavy
+routine. `.paw` modules are stateless adapters: whatever dynamic object a library creates (DataFrame, Response, ORM
+instance, PIL image) is created, consumed and destroyed **inside** the `.paw`; only scalars, strings and flat numeric
+buffers cross the boundary.
 
-### 修订 R2
-- `@allow_nan`：装饰 `.paw` 函数后，该函数调用的出境（参数）与入境（返回值）NaN/Inf 安检都被放行；其余检查（None、类型漂移、越界、NULL、负长度）照常。运行时 `allow_nan` 是 `.paw` 内可直接使用的内置装饰器。
-- `break` / `continue` 已支持（`for`、`while`）。
-- `py-to-pa` 技能新增「负数 `//`、`%` 语义差异」强制提醒。
+**Batching rule.** A boundary call inside a loop (`for`, `while`, comprehension — directly or through a helper
+function) is an error (`PA_E002`). Pack the inputs on the Pa side, cross once, and iterate over the batched result.
 
-### 修订 R3
-- **默认整数字面量为 `i64`**（原 `i32`）：`range` 循环变量、`int(x)`、整数运算默认 64 位，消除线性同余/时间戳/大累加器的静默溢出。`i32`/`u8` 仅在 `@struct` 字段、`@export` 签名、`.paw` 签名或需要省内存/对齐 C ABI 时显式标注；`i32` 值与 `i64` 混算时提升为 `i64`。注意：`[1, 2, 3]` 现在是 `list[i64, 3]`，传给 `span[i32]` 形参的 `.paw` 会报 `PA_E090`，需改用 `span[i64]` 或显式 i32 容器。
+### 2.2 Exception mode: framework-driven apps
 
-### 修订 R4
-- **多维下标** `m[i, j]` ≡ `m[i][j]`（读、写、`+=` 均可），`[[0.0] * W] * H` 生成连续平坦的 `list[list[f64, W], H]`；大数组用循环填充而非展开。
-- **字符串**：`str_view` 为只读视图；`a + b`（含链式）与 `s += x` 产生拥有所有权的 `String`（`{u8*, len, cap}`，RAII 自动释放，返回时移交所有权，`b = a` 深拷贝）。支持 `len(s)`、`s[i]`（u8）、`for ch in s`、`==`/`!=`、`print`、作为 `str_view` 参数传给 `.paw`。已知：作为临时值直接传参的拼接结果（如 `f("a" + b)`）不会被释放。
-- **`mut()` 元素类型推导**：见上。
-- **Web 路由壳**：`examples/web_shell/{stats.pa, app.py}`，`.py` 只做提取参数 -> 调 `@export`（ctypes，`span[f64]` 按 `{ptr, len}` 值传递、`ptr[f64]` 作输出缓冲）-> 序列化；校验错误（422）留在壳里。依赖：`pip install -e .[web]`。
+When a Python framework owns the main loop, keep it as a thin router shell and push all logic into Pa:
 
-### 修订 R5（以 Skill 硬规矩规避编译器限制）
-`pa-coder` 与 `py-to-pa` 技能新增硬规矩：①禁止在调用参数里直接拼接字符串，必须先绑定局部变量再传参（RAII 才能释放）；②空列表跨多层 `mut()` 传递前，须在顶层先确定元素类型或只做单层 `mut()` 填充；③禁止字符串切片；④`.paw` 禁止返回字符串，改用 `Vec[u8]` 字符数组返回。
+```
+HTTP request → .py route: extract raw params (clean in)
+             → call an @export function of the compiled .so
+             → serialize the result (clean out) → response
+```
 
-上述 R5 规矩现已由编译器强制：`PA_E072`（临时 String 只能被赋值给局部、return 或并入同一条拼接链）、`PA_E011`（消息指出 `mut()` 只被转手到哪个被调函数）、`PA_E071`（字符串切片专属提示）、`PA_E082`（`.paw` 返回 `str`/`bytes` 时提示改用 `Vec[u8]`）。
+`pac build --shared` produces a shared library whose `@export` functions are guarded (section 8.5): a fault returns an
+error to the host instead of killing the process. See `examples/web_shell/` (FastAPI).
 
-### 修订 R6：dev / prod 双编译模式
-`pac check|build --mode dev|prod`（默认 `dev`）。
+---
 
-| | dev | prod |
+## 3. The clean Python subset
+
+### 3.1 Whitelist and blacklist
+
+| Aspect | Allowed | Rejected (diagnostic) |
 |---|---|---|
-| 编译期 `.paw` 静态检查 | 签名检查 + **深度 In→Out lint**：`PA_E083`（返回 None / 缺 return 路径 / 返回字面量或 `float()`、`int()`、`len()` 等与声明类型不符）、`PA_E084`（写入只读的 `span`/`list`/`Vec` 入参） | 仅签名检查（`PA_E080`/`E082`）及调用点 `PA_E090` 对照 |
-| 运行期安检 | 全量：标量 + 缓冲区逐元素 NaN/Inf 扫描（出入境）、None/类型漂移/越界；快照最多 1024 元素 | 轻量：标量 NaN/Inf、None/类型漂移/越界、NULL/长度；**不做缓冲区逐元素扫描**；快照最多 16 元素 |
-| `pa_boundary_fault.json` | 含 `"mode": "dev"` | 含 `"mode": "prod"` |
+| Annotations | `@struct` fields; `@export` and `.paw` signatures (all parameters + return); `-> T` on **any** function (the "Out", written by default) | Annotations inside function bodies or on non-export parameters (`PA_E005`); `Any` / `Union` / `Optional` (`PA_E005`); `@export` without full annotations (`PA_E081`); a `-> T` that disagrees with the body (`PA_E085`) |
+| Data | scalars, `str`, homogeneous lists, `@struct` | heterogeneous lists (`PA_E030`), `dict` / `set` / `tuple` (`PA_E031`) |
+| Control flow | `if/elif/else`, `for … in range(...)`, `for x in list`, `while`, `break`, `continue`, guard-clause `return` | `try/except`, `with`, `yield`, `await`, `global`, `nonlocal`, `del` (`PA_E003`) |
+| Functions | plain top-level functions, keyword calls | closures, `lambda`, nested functions, `*args/**kwargs`, `eval/exec`, reflection (`getattr`, `type`, …), metaclasses (`PA_E003`) |
+| Slices & concatenation | `s[i]`, `span(arr, start, len)` | `arr[1:5]`, `a + b` on lists, `.extend()` (`PA_E071`) |
 
-实现：`validator.check_source(mode=)`、`paw.lint_function`、`build.compile_pa(mode=)`；桥接层以 `-DPA_DEEP_CHECKS`、`-DPA_SNAP_LIMIT`、`-DPA_MODE` 在编译 `runtime_bridge.c` 时定型。`@allow_nan` 在两种模式下语义相同。
+### 3.2 Readability limits (enforced)
 
-### 修订 R7：VS Code 本地插件（`vscode-pa/`）
-- 注册语言 ID `pa`（`.pa`）与 `paw`（`.paw`）；TextMate 语法继承链 `source.paw → source.pa → source.python`。
-- 专属配色：编译器原语 `mut/span/copy/alloc/free/py_call`、装饰器 `@struct/@export/@allow_nan`、类型 `i32 i64 u8 f32 f64 str_view bytes_view void Vec[] ptr[] span[]`。
-- 客户端 `src/extension.js` 仅负责启动 `pac lsp`（自动优先 `<workspace>/.venv/bin/pac`，可用 `pa.pacPath` 覆盖）并提供重启 / dev·prod 构建 / `--ai-diagnostic` 检查命令；行内类型提示、悬浮内存审计卡片与诊断均由服务端提供。
-- 打包：`npm install && npx @vscode/vsce package --skip-license --allow-missing-repository` 得到 `pa-lang-0.1.0.vsix`。
-- 测试：`npm test`（vscode-textmate 实际分词）与 `tests/test_lsp_stdio.py`（真实 LSP JSON-RPC 往返：initialize → didOpen → inlayHint → hover → didChange 诊断 → shutdown）。
+| Limit | Value | Code |
+|---|---|---|
+| Lines per function | ≤ 40 | `PA_E060` |
+| Cyclomatic complexity | ≤ 8 | `PA_E061` |
+| Nesting depth | ≤ 3 | `PA_E062` |
+| Positional arguments in a call | ≤ 2 (more must use keywords) | `PA_E051` |
 
-### 修订 R8：函数 Out（返回类型）默认写明
-- 任何 `.pa` 函数都允许并**默认要求**写 `-> T`（`f64`、`i64`、`Vec[T]`、`list[T, N]`、`void`、`@struct` 名）；形参仍不标注（仅 `@export` / `.paw` 完整标注）。
-- 编译器把声明与推导结果对照：不一致报 `PA_E085`（附带按推导结果改写注解的补丁）；数值类型之间不报错，按声明类型做隐式转换（如 `-> f64` 返回整数）；未知类型名同样报 `PA_E085`。声明的返回类型同时用于递归调用与 `@export` ABI。
-- 三个 Skill 与示例（benchmark、pipeline_demo）已改为默认写 `-> T`。
+Calls with more than four keyword arguments should be broken over several vertically aligned lines.
 
-### 修订 R9：LSP 自动重启
-`pac lsp` 启动后每秒检查 `pa_lang/` 下 `*.py` / `*.c` 的修改时间与大小，一旦变化（去抖 0.5 秒）便正常退出；VS Code 的语言客户端检测到连接关闭会自动拉起新进程，因此改动编译器后编辑器里不再残留旧版诊断。`PA_LSP_AUTORELOAD=0` 可关闭，`PA_LSP_WATCH_DIR` 可改监视目录（测试用）。客户端默认在 3 分钟内最多自动重启 4 次，超出后用 “Pa: Restart Language Server”。
+### 3.3 Statements the compiler tracks for you
 
-### 修订 R10：默认类型用 Python 叫法
-- 别名：`int` ≡ `i64`、`float` ≡ `f64`（注解、`@struct` 字段、`@export` / `.paw` 签名、`list[float, N]`、`Vec[int]`、`span[float]` 均可用）。`i32` / `u8` / `f32` 只在刻意要窄类型时使用。
-- 行内虚拟提示：默认宽度显示 Python 名（`: int`、`: float`、`: list[float, 16] (128B flat)`、`: StackVec<int, max=64> (Zero-Heap)`、`[🌉 .paw FFI -> float]`）；窄类型照常显示 `: i32` / `: u8` / `: f32` 作为醒目提醒。
-- 悬浮卡片：首行 `int (i64, 8B, stack)` / `list[float, 16] (list[f64, 16], 128B, stack)`，窄类型另加 “narrow type” 提示；其后是 LLVM 布局、字节数与步长、存储位置、RAII `free` 行号、圈复杂度。
-- 诊断修复补丁（`PA_E085` 等）中的注解同样以 Python 名拼写。
+- **Definite assignment** (`PA_E088`): a variable must be assigned on every path before use.
+- **One type per variable** (`PA_E086`): a name may widen `int → float` but never changes kind or fixed length.
+- **No mutation while iterating** (`PA_E087`): no `append`, `mut(v)` or rebinding of `v` inside `for x in v`.
+- **Constant indexes** are checked at compile time (`PA_E073` for negative ones, a compile error past a fixed length).
 
-### 修订 R11：默认提示再减负 + 单行注释硬规矩
-- **行内提示分两档**（`pa.inlayHints.detail`，默认 `simple`；经 LSP `initializationOptions.hintDetail` 传给服务端，切换设置会自动重启服务）：
-  - `simple`（默认）：只写 Python 名，不带尺寸/存储类：`: int`、`: float`、`: bool`、`: str`、`: list[float]`（定长数组、栈上向量、堆 Vec 一律 `list[...]`）、`: 结构体名`、`[🌉 .paw → float]`；窄类型依然显形（`: i32`、`: u8`、`: list[f32]`）。`[free: RAII]`、`[memcpy ..]` 不再显示（>4KB 拷贝仍有 `PA_W001`）。
-  - `detailed`：`: list[float, 16] (128B flat)`、`: StackVec<int, max=64> (Zero-Heap)`、`: Vec<int> (RAII)`、`[free: RAII]`、`[memcpy 128B]`、`[🌉 .paw FFI -> float]`。
-  - 内存细节统一放进悬浮卡片（`int (i64, 8B, stack)`、LLVM 布局、步长、RAII 释放行、复杂度）。
-- **Skill 硬规矩**：凡不好理解或操作复杂的函数（模/位/溢出敏感运算与技巧算法、手动内存 `alloc/free/span/copy/mut()` 转手、`.paw` 桥接与批处理、刻意的窄类型、圈复杂度 ≥ 5 等），`def` 正上方必须有且仅有一行 `# …` 注释（≤ 100 字符，写意图/陷阱而非复述代码）；平凡函数不写。三个 Skill 与示例已按此执行。
+---
 
-### 修订 R12：边界条件加固（全部 P0 + 3 条 P1）
-| 项 | 处理 |
+## 4. Type system
+
+### 4.1 Scalars and aliases
+
+| Pa type | Python spelling | Size | Notes |
+|---|---|---|---|
+| `i64` | **`int`** (default) | 8 B | Default integer for literals, `range` variables and `int(x)`. Wraps on overflow. |
+| `f64` | **`float`** (default) | 8 B | Default float. |
+| `i32`, `u8`, `f32` | same | 4 / 1 / 4 B | Narrow types, written **only** deliberately (struct packing, big arrays, C ABI). The editor shows them loudly. |
+| `bool` | `bool` | 1 B | |
+| `str_view` | `str` | 16 B | Read-only `{u8*, len}` view (string literals, `.paw` string arguments). |
+| `void` | — | 0 | |
+
+`int` is an alias of `i64` and `float` of `f64` everywhere annotations are allowed (`list[float, 16]`, `Vec[int]`,
+`span[float]`). Mixed arithmetic promotes (`i32 + i64 → i64`, `int + float → f64`); `/` is always a float division.
+Numeric results are coerced to a declared return type (`-> float` may `return 1`).
+
+### 4.2 Aggregates
+
+| Type | Spelling | Layout | Where it lives |
+|---|---|---|---|
+| Fixed list | `list[T, N]`, `[a, b, c]`, `[x] * N` | `[N x T]`, nested lists flatten | stack (total ≤ 64 KB) |
+| Stack-bounded vec | inferred | `{T*, len, cap}` over a stack buffer | stack, no `malloc` |
+| Heap vec | `Vec[T]`, inferred | `{T*, len, cap}` | heap, freed by RAII |
+| Owned string | `String` (from `a + b`) | `{u8*, len, cap}` | heap, freed by RAII |
+| Struct | `@struct class` with annotated fields | C layout, natural alignment; nested structs and fixed-list fields allowed | stack / inside vecs (AoS) |
+| Pointer | `ptr[T]` | `T*` | from `alloc`; never bounds-checked |
+| Span | `span[T]` | `{T*, len}` by value | borrowed view |
+
+### 4.3 Inference
+
+Bidirectional, per function, iterated to a fixed point over call sites (parameter types flow from callers; return
+types flow back). Empty lists take their element type from the first `append`, or from a callee's direct `append` when the
+list is passed once through `mut(...)` (otherwise `PA_E011`). `[0] * 0` / `[0.0] * 0` declares a typed empty vec.
+Module-level `int`, `float`, `bool` and `str` constants (and arithmetic on them) are folded at compile time.
+
+---
+
+## 5. Memory model
+
+### 5.1 Value semantics and borrowing
+
+- **Assignment copies.** `b = a` deep-copies arrays, structs and vecs (`llvm.memcpy`; a single stack copy above 4 KB
+  raises `PA_W001`). Pointers cannot be aliased by bare assignment (`PA_E070`).
+- **Calls borrow.** Containers and structs are passed as zero-copy **read-only** borrows. A callee that mutates a
+  parameter (`append`, `x[i] = …`, `p.f = …`) requires the caller to write `mut(x)` (`PA_E050`).
+- **No aliasing with `mut`.** The same container may not be passed twice in one call when one occurrence is `mut(...)`
+  (`PA_E089`). Scalar subscript or field reads (`f(mut(v), v[i])`) are loaded by value first and are allowed.
+
+### 5.2 Storage decision tree
+
+Every list is compiled to contiguous flat memory according to escape analysis:
+
+| Level | Condition | Result |
+|---|---|---|
+| **1 — stack** | scalars, structs, constant-length lists (≤ 64 KB total); a dynamic list that does not escape and has a known constant upper bound on its appends (e.g. `for i in range(64)`) | `[N x T]` or a stack-bounded vec: `append` is a pointer write plus `len += 1`, zero `malloc` |
+| **2 — heap vec** | unknown bound, escapes via `return` / struct field, or above 64 KB | `{T*, len, cap}`, starts at `cap = 16` and doubles; freed before every `return` unless ownership moves to the caller |
+| **3 — hard error** | heterogeneous list (`PA_E030`, with a generated `@struct` surgery patch); uninferable empty list (`PA_E011`); a `span` of a local returned (`PA_E040`); an `alloc` that leaks or is used after `free` (`PA_E004`) | compilation stops |
+
+### 5.3 Building lists
+
+| Form | Result |
 |---|---|
-| 整数 `//` `%` 除零 | 两种模式都检查，`ZeroDivisionError`；`INT_MIN // -1` 不再陷阱。浮点除零仍按 IEEE 得 `inf`/`nan`（与 Python 不同，已写入 Skill） |
-| 下标越界 / 负下标 | **负下标视为越界，不折算 `len + i`**。dev 模式对每个变量下标（含 `m[i, j]` 逐维、`span`、`str`）做无符号 `idx < len` 检查，违例 `IndexError`；prod 不检查。常量负下标 `PA_E073`，常量下标越过定长数组为编译错误 |
-| `[x] * N` 超过 64KB | 自动落到堆上 `Vec`（RAII 释放，可 `return`），二维同理 |
-| 变量类型变化 | `PA_E086`（含定长数组长度变化），不再让 LLVM 崩溃 |
-| `range` 变量步长 | 进入循环前判断：`step == 0` → `ValueError`，`> 0` 递增，`< 0` 递减；常量 0 为编译错误 |
-| 遍历时修改同一列表 | `PA_E087`（`append` / `mut()` / 重新绑定） |
-| 可能未赋值就使用 | `PA_E088`（按 if/else 交集、循环体不计入的定值分析） |
-| 别名 `f(v, mut(v))` | `PA_E089`（同一调用里同一变量既 `mut()` 又再次出现） |
-| 窄类型截断 | 传给 `.paw` 的 `u8`/`i32` 参数始终做范围检查（`OverflowError`），不适配的字面量编译期报错；dev 模式下赋值/传参/结构体字段也检查；浮点不再允许传给整数形参（`PA_E090`） |
-| 模块级常量 | 支持 `int` / `float` / `bool` / `str` 及其常量算术 |
-| `print` | 与 Python `repr` 对齐（最短往返浮点、`15.0`、`1e+20`、`True`） |
-| 共享库不再杀宿主 | `@export` 函数由 C 包装器（`setjmp` 守卫）调用；故障时返回 0 并记录错误，宿主用 `pa_error_code()` / `pa_error_message()` / `pa_error_json()` / `pa_error_clear()` 读取；`.paw` 桥接故障先释放 GIL 再回跳。FastAPI 示例把故障转成 HTTP 400 |
-| `@allow_nan` 竞态 | 标志改为按调用传参，不再使用全局变量 |
-| 运行时 | 新增 `runtime_core.c`（无 Python 依赖、始终链接）：故障、守卫、print 助手；运行时故障写 `pa_runtime_fault.json`（含 `mode`、`kind`、`detail`、`function`、`line`） |
+| `[a, b, c]` | `list[T, 3]` on the stack |
+| `[x] * N` (constant, ≤ 64 KB) | `list[T, N]` on the stack |
+| `[x] * n` (runtime `n`, `n ≤ 0`, or > 64 KB) | heap `Vec[T]`, RAII-freed, negative `n` clamps to 0 |
+| `[[0.0] * W] * H` | contiguous 2-D array, indexed `m[i, j]` (≡ `m[i][j]`) |
+| `[]` + `append` | stack-bounded vec or heap vec by escape analysis |
+| `[0] * 0`, `[0.0] * 0` | typed empty heap vec (100 % valid Python) |
 
-仍搁置的 P2：绝对路径烘焙、冷启动、`pa_boundary_fault.json` 并发覆盖、栈上向量的深递归栈溢出（待发版/部署阶段处理）。
+### 5.4 Strings
 
-### 修订 R13：运行期 `[x] * n` 堆 Vec、放宽标量下标 `PA_E089`、`libm` 原语与 Skill 完善
-- **`[x] * n` 升级为运行期堆 `Vec`**：`n` 为运行期变量或 `n <= 0`（或常量 > 64KB）时直接分配连续堆 `Vec<T>`（RAII 自动释放、dev 模式全量越界检查、负 `n` 钳位为 0）。`[0] * 0` / `[0.0] * 0` 即为 100% 兼容 Python 语法的“带类型空动态 `Vec`”，彻底消除多层 `mut()` 转发空列表时的 `PA_E011` 痛点与写死 `MAX_N` 的需求。
-- **`PA_E089` 放宽标量下标/字段读取**：别名检查移至类型推导后执行（`infer.check_aliases`）。`f(mut(v), v[i])` 这类标量下标/字段读在调用前已按值载入寄存器，不持有借用指针，不再误报 `PA_E089`；传入容器本身、`mut(v)`、`span(v, ...)` 或聚合下标（如二维数组行 `m[0]`）仍严格拦截。
-- **内置 `libm` 数学原语**：`sin`、`cos`、`tan`、`sqrt`、`atan`、`atan2`、`exp`、`log`、`floor`、`ceil`；`analyze()` 改为不动点传播（支持任意深度调用链）。
-- **Skill 补齐**：`pa-coder` 补全 `libm` 原语、>4 参数多行纵向对齐规范、`[0] * 0` / `[x] * n` 用法；`pa-coder` 与 `py-to-pa` 均补上浮点 `%` 的 C `fmod` 语义提醒。
+`str_view` is a read-only `{ptr, len}` view. `a + b` (including chains) and `s += x` produce an owned `String`: one
+allocation per chain, freed by RAII, ownership transferred on `return`, deep-copied on `b = a`. Supported: `len(s)`,
+`s[i]` (a `u8`), `for ch in s`, `==` / `!=`, `print`, passing as `str_view` to a `.paw`.
+**A temporary `String` must be bound to a local** (`PA_E072`): `tmp = a + b; f(tmp)`, never `f(a + b)`.
+Strings are UTF-8 **bytes** (`len("héllo")` is 6); slicing is not supported (`PA_E071`).
 
-### 修订 R14：清理写死路径（可搬迁二进制）
-- **`.paw` 源码内嵌进二进制**（`build_embed` 生成 `pa_paw_embed.c`，八进制转义，无三字符组 / 十六进制续接问题），不再烘焙源码目录；`PA_PATH=dir1:dir2` 仍可优先加载磁盘上的 `.paw`（开发期热改）。内嵌模块的 `__file__` 为 `<embedded>/<name>.paw`，`.paw` 内不要依赖 `__file__`（示例的数据目录默认改为当前工作目录，可由 `PA_*_DATA_DIR` 覆盖）。
-- **Python 位置运行期解析**：home：`PA_PYTHON_HOME` > `PYTHONHOME` > 构建期默认（目录仍存在才用）；`sys.path`：`PA_PYPATH` > `$VIRTUAL_ENV/lib/pythonX.Y/site-packages` > 构建期默认（仅保留仍存在的目录；默认值收窄为构建解释器的 purelib/platlib，不再整份烘焙 `sys.path`）。被宿主 Python 加载的共享库不改 `PYTHONHOME`。
-- **`pac build`** 新增 `--python-home`、`--python-path`（可重复）、`--relocatable`（不烘焙任何 Python 路径）。rpath 新增 `$ORIGIN`、`$ORIGIN/../lib`（可把 `libpython` 放在二进制旁）；非 relocatable 时仍附带构建期 libpython 目录。
-- **打包**：`pyproject.toml` 增加 `package-data = {pa_lang = ["*.c"]}`，普通 `pip install .`（非可编辑）也会带上 `runtime_bridge.c` / `runtime_core.c`；新增根目录 [README.md](README.md)。
+### 5.5 Manual memory and views
+
+`alloc(T, n)` / `free(p)` exist for FFI-style code; `span(arr, start, len)` is a zero-copy view; `copy(dst, src, count)`
+is `memcpy`. Pointer bugs are diagnosed statically where possible (`PA_E004`, `PA_E040`, `PA_E070`).
+
+---
+
+## 6. Runtime semantics and faults
+
+### 6.1 Differences from Python (by design)
+
+| Topic | Pa behaviour | Python |
+|---|---|---|
+| Integer `//`, `%` | C semantics: truncation toward zero (`-7 // 2 == -3`, `-7 % 3 == -1`) | floors |
+| Float `%` | C `fmod` (`-1.0 % 6.283 == -1.0`) | floored |
+| Integer `//`, `%` by zero | `ZeroDivisionError` fault (both modes); `INT_MIN // -1` does not trap | exception |
+| Float `/` by zero | IEEE `inf` / `nan` | exception |
+| Integer overflow | wraps in 64 bits | big integers |
+| Indexing | `0 ≤ i < len` only; **negative indexes are out of range** (write `a[len(a) - 1]`) | negative indexes wrap |
+| `range(a, b, step)` | variable step allowed; `step == 0` → `ValueError`; direction chosen before the loop | same |
+| Strings | UTF-8 bytes | code points |
+| `print` | Python `repr` formatting (`15.0`, `0.30000000000000004`, `1e+20`, `True`) | — |
+| Variable types | one type per variable | dynamic |
+
+### 6.2 Faults
+
+A runtime fault never corrupts state silently:
+
+- **Executables:** write a JSON report (`pa_runtime_fault.json` or `pa_boundary_fault.json`, or the path in
+  `PA_FAULT_PATH`), print a one-line summary and exit with code **70**.
+- **Shared libraries:** the fault is recorded in thread-local storage and control returns to the host (section 8.5).
+
+Runtime fault report: `{"mode", "kind", "detail", "function", "line"}` with `kind` one of `ZeroDivisionError`,
+`IndexError`, `ValueError`, `OverflowError`. Narrowing never truncates silently: an `int` passed to a `u8`/`i32`
+parameter is range-checked (a literal that does not fit is a compile error).
+
+### 6.3 Modes
+
+| | `--mode dev` (default) | `--mode prod` |
+|---|---|---|
+| Bounds checks on every variable index (incl. each dimension of `m[i, j]`, `span`, `str`) | yes (`IndexError`) | no (C-like) |
+| Division by zero, `range` step 0, `.paw` narrowing | checked | checked |
+| Narrowing on assignments / arguments / fields | checked | not checked |
+| `.paw` static lint (section 7.5) | deep | signatures only |
+| Boundary customs | full element scans, snapshots up to 1024 elements | scalar customs, no per-element NaN scan, snapshots up to 16 elements |
+
+Ship only code that is clean in dev.
+
+---
+
+## 7. The `.paw` boundary
+
+### 7.1 Signatures
+
+```python
+# np_ops.paw — free to import numpy, but the signature is locked
+import numpy as np
+
+def sum_array(arr: span[float]) -> float:
+    return float(np.sum(np.frombuffer(arr, dtype=np.float64)))
+```
+```python
+# main.pa — reads like a normal module; x is inferred as float
+import np_ops
+
+def main() -> int:
+    arr = [1.0, 2.0, 3.0, 4.0]
+    x = np_ops.sum_array(arr)
+    return 0
+```
+
+| Direction | Allowed types |
+|---|---|
+| Parameters | `i32 i64 u8 f32 f64 bool` (and `int`/`float`), `str_view`, `span[T]`, `list[T, N]`, `Vec[T]` (T numeric) |
+| Return | numeric scalar, `Vec[T]`, or `void` — **never a string** (return `Vec[u8]` and let Pa own the bytes) |
+
+Errors: missing signature `PA_E080`, unsupported type `PA_E082`, mismatching call `PA_E090` (a float is never accepted for
+an integer parameter). Inside a `.paw`, the type names (`span`, `Vec`, `i32`, …) and `@allow_nan` are pre-defined builtins.
+
+### 7.2 Front end
+
+When `infer.py` meets `import x` and `x.paw` exists, it parses **only** the public function signatures into the symbol
+table. `x.f(arr)` is then typed statically; the Python body is never analysed by the compiler.
+
+### 7.3 Back end: marshaling stubs
+
+`codegen.py` does not compile `.paw` files. Each call site emits a stub that fills an argument table and calls
+`pa_call_paw(module, function, args, nargs, ret_tag, ret_elem, flags, &ret)` in `runtime_bridge.c`:
+
+- scalars → `PyLong` / `PyFloat` / `PyBool`; strings → `str`;
+- contiguous buffers (`list[T, N]`, `Vec[T]`, `span[T]`) → `PyMemoryView_FromMemory` cast to the element format: **zero
+  copy**, so `np.frombuffer(arr, …)` reads Pa memory directly (the view is read-only);
+- the result is checked, then unboxed into native values (`Vec[T]` results are copied into a malloc'd buffer owned by Pa).
+
+### 7.4 Two-way customs
+
+| Direction | Checked |
+|---|---|
+| **Out-bound** `PA_TO_PY_IN` | NaN / Inf (scalars; buffers in dev), `NULL` pointer with length > 0, negative length, narrowing range |
+| **In-bound** `PY_TO_PA_OUT` | `None`, NaN / Inf, type drift (e.g. `int` where `float` was declared, `bool` for an integer), integer out of range, buffer format mismatch, Python exceptions |
+| **Start-up** `STARTUP` | embedded Python cannot be initialised (section 7.7) |
+
+Any violation fuses immediately and writes `pa_boundary_fault.json`:
+
+```json
+{
+  "mode": "dev",
+  "direction": "PY_TO_PA_OUT",
+  "worker": "np_ops.sum_array",
+  "violation": "return: None where f64 was declared",
+  "in_payload_snapshot": [{"index": 0, "type": "buffer<f64>", "len": 4, "truncated": false, "values": [1, 2, 3, 4]}]
+}
+```
+
+**Deterministic bisection (replay in seconds).** Replay `in_payload_snapshot` against the bare `.paw` function: valid
+input and wrong output means the `.paw` is at fault; correct worker output but wrong final state means the Pa core is.
+`@allow_nan` on a `.paw` function waives only the NaN/Inf checks for that function, in both directions.
+
+### 7.5 Static lint of `.paw` bodies (dev mode)
+
+Beyond the signature rules, dev builds lint every imported `.paw`: returns that cannot match the declared type
+(`None`, an `int` literal for `f64`, `float()`/`int()`/`len()` mismatches), paths that fall off the end and return `None`
+(`PA_E083`), and writes into read-only input buffers (`PA_E084`).
+
+### 7.6 Embedding and run-time resolution
+
+Imported `.paw` sources are **embedded in the binary** (no source directory is baked in); the module's `__file__` is
+`<embedded>/<name>.paw`, so `.paw` code must not rely on it. The location of CPython is resolved at run time:
+
+| What | Priority (first match wins) |
+|---|---|
+| `.paw` sources | `PA_PATH` directories (live-edit override) → sources embedded in the binary |
+| Python home | `PA_PYTHON_HOME` → `PYTHONHOME` → `<binary dir>/python-home` → build-time default (only if it contains a stdlib) |
+| `sys.path` | `PA_PYPATH` → `$VIRTUAL_ENV/lib/pythonX.Y/site-packages` → build-time defaults (only entries that still exist) |
+
+Build-time defaults are the building interpreter's prefix and its `purelib`/`platlib`; `--python-home` and
+`--python-path` override them and `--relocatable` bakes none. A binary that links no `.paw` links no Python at all.
+Shared libraries loaded into a running Python reuse the host interpreter and never touch `PYTHONHOME`.
+
+### 7.7 Deployment and diagnosing a missing Python
+
+A missing `libpython` makes the **dynamic loader** abort before any Pa code runs (`error while loading shared
+libraries: libpython3.12.so.1.0`, exit 127), so detection lives in the toolchain:
+
+- `pac doctor` — checks the build machine (gcc, llvmlite, `Python.h`, shared `libpython`) and prints install hints.
+- `pac doctor ./app` — reads the binary's ELF `DT_NEEDED` / `RPATH` / `RUNPATH`, resolves each library with the loader's
+  search order, lists what is missing, shows which Python home will be used and how to fix it (exit code 1 if it cannot start).
+- `pac bundle ./app [--with-stdlib]` — copies `libpython3.X.so` next to the binary (found through the `$ORIGIN` rpath);
+  `--with-stdlib` also ships a trimmed stdlib as `./python-home`, giving a binary that runs with no environment variables.
+  Third-party packages (numpy, …) are never bundled: provide them with `PA_PYPATH` / `VIRTUAL_ENV`.
+- After the loader succeeds, a bad or missing Python home becomes a friendly `STARTUP` fault (exit 70) naming the fix.
+
+---
+
+## 8. Compiler architecture
+
+### 8.1 Pipeline
+
+```mermaid
+flowchart LR
+    SRC[".pa source"] --> AST["ast.parse"]
+    AST --> VAL["validator.py<br/>subset, boundary, borrow,<br/>definite assignment, limits"]
+    PAW[".paw headers"] --> INF
+    VAL --> INF["infer.py<br/>types, escape analysis,<br/>storage classes"]
+    INF --> DIAG["diagnostics.py<br/>JSON repair tickets"]
+    INF --> CG["codegen.py<br/>llvmlite IR"]
+    CG --> OBJ["LLVM O2 → object"]
+    OBJ --> LINK["gcc link"]
+    CORE["runtime_core.c"] --> LINK
+    BRIDGE["runtime_bridge.c<br/>+ embedded .paw sources"] --> LINK
+    WRAP["@export wrappers<br/>(--shared)"] --> LINK
+    LINK --> BIN["native binary / .so"]
+```
+
+### 8.2 Modules
+
+| File | Role |
+|---|---|
+| `pa_lang/types.py` | Memory-layout type system, intrinsics and builtins registry, `int`/`float` display names |
+| `pa_lang/infer.py` | Zero-annotation inference to a fixed point, stack-bound escape analysis, `Vec` promotion, alias and temporary-string checks, editor hints |
+| `pa_lang/validator.py` | Subset rules, `.paw` import rules, batching, borrow (`mut`) checks, definite assignment, readability limits |
+| `pa_lang/paw.py` | `.paw` header parsing, signature validation, dev-mode deep lint |
+| `pa_lang/diagnostics.py` | Diagnostic catalogue, JSON tickets, `@struct` surgery for `PA_E030` |
+| `pa_lang/codegen.py` | llvmlite IR generation (libc and runtime symbols declared up front), bounds/division/narrowing checks, marshaling stubs |
+| `pa_lang/build.py` | Object emission and linking, embedding of `.paw` sources, `@export` wrappers, Python path baking |
+| `pa_lang/runtime_core.c` | Fault raising, thread-local guards for shared libraries, Python-compatible `print` helpers (no Python dependency, always linked) |
+| `pa_lang/runtime_bridge.c` | Embedded CPython, customs, marshaling, start-up diagnostics |
+| `pa_lang/doctor.py` | ELF inspection, `pac doctor`, `pac bundle` |
+| `pa_lang/lsp_server.py` | Language server |
+| `pa_lang/cli.py` | `pac` entry point |
+
+### 8.3 Inference and escape analysis
+
+Per function, one walk assigns types to every expression; a list created by `[]` is a placeholder whose element type is
+fixed by its first `append`. A second analysis computes, per list, whether it escapes (returned, stored in a struct, handed
+to `mut(...)`) and an upper bound on its appends (constant `range` bounds multiplied through nested loops;
+`while` and variable bounds are unbounded). Result: stack-bounded vec if it does not escape, is bounded and ≤ 64 KB;
+otherwise a heap vec. Call-site argument types and return types are propagated until nothing changes.
+
+### 8.4 Code generation
+
+- Scalars are SSA values; fixed lists, vecs and structs are handled by address. `StackVec` and `Vec` share the header
+  `{T*, i64 len, i64 cap}` (a stack vec's pointer targets an entry-block `alloca`).
+- Functions take scalars, views and pointers by value and aggregates by pointer; aggregates are returned by value.
+- Emitted checks: bounds (dev), integer division by zero, `range` step, narrowing, and RAII `free` on every exit path of
+  heap locals that are not returned.
+- LLVM `-O2` runs before object emission.
+
+### 8.5 `--shared` libraries and the guarded ABI
+
+`@export` functions keep their names; the compiler renames the implementation (`pa_impl_<name>`) and links a C wrapper
+that installs a `setjmp` guard. A fault (Pa runtime or `.paw` boundary, after releasing the GIL) records the error in
+thread-local storage and returns `0` to the host, which polls `pa_error_code()`, `pa_error_message()`, `pa_error_json()`
+and clears it with `pa_error_clear()` (see `examples/web_shell/app.py: checked`).
+
+| Pa parameter | C ABI |
+|---|---|
+| `int`, `float`, `i32`, `u8`, `f32`, `bool` | by value |
+| `span[T]`, `str_view` | `struct { void *p; int64_t n; }` by value |
+| `ptr[T]`, `list[T, N]` | pointer to the first element |
+| `Vec[T]` | pointer to `{T*, i64 len, i64 cap}` |
+
+---
+
+## 9. Diagnostics for AI agents
+
+`pac check --ai-diagnostic` prints a JSON array of self-contained repair tickets:
+
+| Field | Meaning |
+|---|---|
+| `code`, `category`, `severity` | stable identifier, family, `error` / `warning` |
+| `skill_rule_ref` | the skill rule that explains it |
+| `location` | file, line, column |
+| `summary` | one-line description |
+| `inferred_context` | the types, layouts or values the compiler inferred |
+| `causal_chain` | from the definition to the violation |
+| `source_context` | the offending line with ±3 lines of source |
+| `repair_plan` | `strategy`, `anti_patterns_to_avoid`, `suggested_patches` (deterministic replacement code) |
+
+| Family | Codes |
+|---|---|
+| Syntax / subset | `PA_E000` syntax error · `PA_E003` forbidden construct · `PA_E031` forbidden data type |
+| Host isolation / boundary | `PA_E001` third-party import in `.pa` · `PA_E002` boundary call in a loop · `PA_E080` missing `.paw` signature · `PA_E082` bad boundary type · `PA_E083` `.paw` return mismatch (dev) · `PA_E084` write to read-only input (dev) · `PA_E090` bad `.paw` call |
+| Annotations | `PA_E005` forbidden annotation · `PA_E081` incomplete `@export` · `PA_E085` return annotation mismatch |
+| Layout / inference | `PA_E011` uninferable empty list · `PA_E030` heterogeneous list (with `@struct` surgery) · `PA_E071` implicit heap slice / concat · `PA_E086` variable changes type · `PA_E088` possibly unassigned |
+| Memory safety | `PA_E004` alloc leak / use after free · `PA_E040` span of a local returned · `PA_E070` pointer alias · `PA_E072` temporary `String` · `PA_E073` negative index · `PA_E087` mutation while iterating · `PA_E089` `mut` aliasing |
+| Borrow / style | `PA_E050` missing `mut()` · `PA_E051` use keyword arguments · `PA_E060` / `PA_E061` / `PA_E062` size, complexity, nesting |
+| Performance | `PA_W001` stack copy above 4 KB (warning) |
+
+`PA_E030` tickets contain a generated `@struct` definition and the rewritten literal, turning a mixed 2-D table into a
+contiguous `Vec<Record>` (AoS).
+
+---
+
+## 10. Tooling
+
+### 10.1 `pac`
+
+| Command | Purpose |
+|---|---|
+| `pac check [--ai-diagnostic] [--mode dev\|prod] PATH…` | Front-end checks on files or directories (`.pa` and `.paw`); exit 1 on errors |
+| `pac build FILE [-o OUT] [--mode dev\|prod] [--shared] [--emit-ir] [--python-home P] [--python-path S]… [--relocatable]` | Compile to a native executable or shared library |
+| `pac lsp` | Language server over stdio |
+| `pac doctor [BINARY]` | Environment or binary diagnosis (section 7.7) |
+| `pac bundle BINARY [--dest D] [--with-stdlib]` | Ship `libpython` (and a stdlib) next to a binary |
+| `pac --version` | Print the version |
+
+### 10.2 Environment variables
+
+| Variable | Effect |
+|---|---|
+| `PA_PATH` | Directories searched first for live `.paw` files |
+| `PA_PYTHON_HOME`, `PA_PYPATH` | Python home and `sys.path` entries (run time) |
+| `PA_FAULT_PATH` | Where fault reports are written |
+| `PA_LSP_AUTORELOAD=0`, `PA_LSP_WATCH_DIR` | Disable / redirect the language server's auto-restart |
+| `PA_ALLOW_UNSUPPORTED_PLATFORM=1` | Attempt `pac build` off Linux |
+| `PA_*_DATA_DIR` | Data directory of an example (default: current directory) |
+
+### 10.3 Language server and VS Code extension
+
+`pac lsp` provides diagnostics, inlay hints and hover. It watches its own source files and exits when they change; the
+client restarts it, so the editor never shows stale diagnostics.
+
+- **Inlay hints** (`pa.inlayHints.detail`): `simple` (default) shows Python names only — `: int`, `: float`,
+  `: list[float]`, `: str`, `: Point`, `[🌉 .paw → float]` — while narrow types stay loud (`: i32`, `: u8`).
+  `detailed` adds sizes and memory strategy — `: list[float, 16] (128B flat)`, `: StackVec<int, max=64> (Zero-Heap)`,
+  `: Vec<int> (RAII)`, `[free: RAII]`, `[memcpy 128B]`, `[🌉 .paw FFI -> float]`.
+- **Hover audit card**: `int (i64, 8B, stack)`, LLVM layout, size and element stride, stack/heap placement, the line(s)
+  where RAII inserts `free`, the function's cyclomatic complexity, and a warning for narrow types.
+- **Extension** (`vscode-pa/`): registers the languages `pa` and `paw`; the TextMate grammar inherits Python's
+  (`source.paw → source.pa → source.python`) and colours the intrinsics (`mut span copy alloc free`), the decorators
+  (`@struct @export @allow_nan`) and the Pa types. Commands: restart the server, build (dev / prod), check with
+  `--ai-diagnostic`. Settings: `pa.pacPath` (default: `<workspace>/.venv/bin/pac`, then `pac`), `pa.inlayHints.detail`.
+
+---
+
+## 11. AI skills
+
+Three skill packs in `skills/` drive coding agents; each ends in the same gate (`pac check --ai-diagnostic` until green,
+dev mode first).
+
+| Skill | When | Core workflow |
+|---|---|---|
+| `pa-coder` | New projects | Host-First skeleton (or a thin web shell) → write zero-annotation `.pa` with `-> T` on every function → contiguous data layout (`@struct`, `[x] * n`, `[0] * 0`) → quarantine libraries in `.paw` → self-heal with tickets |
+| `py-to-pa` | Accelerate a Python repository | **Three-colour gate** per module — 🟢 pure compute: convert fully; 🟡 libraries or web framework: invert control (Pa host + `.paw`, or a thin router shell); 🔴 heavy metaprogramming: stop with `STATUS: RED - Keep in .py worker layer + <one-sentence blocker>` — then convert, then prove with a differential test and timing report |
+| `cpp-to-pa` | Modernise legacy C++ | Map `std::array`, `std::vector`, `struct`, `std::span`, `const T&` one-to-one to fixed lists, vecs, `@struct`, `span`, default borrows; strip macros and raw owning pointers; byte-level differential fuzzing |
+
+Hard rules the skills enforce (most are also compiler diagnostics): temporary strings bound to locals; empty lists
+declared with `[0] * 0`; no slicing; no negative indexes; one type per variable; assign before use; never mutate a list
+being iterated; no `mut` aliasing; one single-line comment above every non-obvious function; explicit awareness of the
+integer / float `%` and `//` semantics when porting; `.paw` modules never return strings.
+
+---
+
+## 12. Repository layout
+
+```
+pa/
+├── pyproject.toml            package metadata (entry point: pac = pa_lang.cli:main)
+├── LICENSE  README.md  ARCHITECTURE.md  CHANGELOG.md  RELEASING.md
+├── pa_lang/                  compiler, runtimes, language server
+├── skills/                   pa-coder · py-to-pa · cpp-to-pa
+├── vscode-pa/                VS Code extension (grammar, client, tests)
+├── examples/
+│   ├── pipeline_demo/        host-first demo (.pa + .paw)
+│   ├── web_shell/            FastAPI router shell over a guarded .so
+│   ├── benchmark/            CPython vs Pa loops
+│   ├── utm/ delaunator/ levenshtein/ kdtree/    differential benchmarks
+├── tests/                    pytest suites
+└── .github/workflows/        CI and release
+```
+
+---
+
+## 13. Testing and verification
+
+| Suite | Covers |
+|---|---|
+| `test_infer`, `test_validator` | inference, storage classes, escape analysis, every diagnostic |
+| `test_codegen`, `test_features`, `test_hardening` | end-to-end compile-and-run, runtime faults, big lists, strings, 2-D indexing, narrowing, guarded shared libraries, the FastAPI shell |
+| `test_lsp`, `test_lsp_stdio`, `vscode-pa/test` | hints, hover, real LSP JSON-RPC round trips, TextMate scopes |
+| `test_relocation`, `test_doctor` | embedded `.paw`, run-time Python resolution, `pac doctor` / `pac bundle`, start-up faults |
+| `test_release` | single-sourced version, metadata, license, workflows, platform guard |
+
+Each example under `examples/` ships a verification script that compares the native binary against a pure-Python
+reference on randomized data (exact for integers and sets, `< 1e-9` for floats) and prints a speed-up table:
+
+| Example | Stresses | Indicative compute speed-up* |
+|---|---|---|
+| `utm` | float math, `libm`, special-zone branching, 100 k points | ≈ 165–250× |
+| `delaunator` | dynamic `Vec` growth, `while` loops, half-edge index jumps | ≈ 17× |
+| `levenshtein` | byte spans, rolling arrays, flattened 2-D DP, `String` RAII, 50 k pairs | ≈ 65–95× |
+| `kdtree` | recursion, nested `@struct`, manual-stack search, PIL rendering through a `.paw` | ≈ 22–29× |
+| `benchmark` | 5·10⁷-iteration integer and float loops | ≈ 110× |
+
+\* Measured on the development machine against CPython 3.12; indicative only.
+
+---
+
+## 14. Platform support, limits and roadmap
+
+**Supported:** Linux x86-64 (aarch64 is expected to work but is untested), CPython 3.11–3.13 with headers and a shared
+`libpython`, `gcc`. `pac check`, `pac lsp` and `pac build --emit-ir` are platform independent. `pac build` refuses other
+platforms (`PA_ALLOW_UNSUPPORTED_PLATFORM=1` overrides) and `doctor` / `bundle` only understand ELF binaries and
+`/proc/self/exe`.
+
+**Current limits**
+
+- No string slicing; a `.paw` cannot return a string; structs cannot cross the `.paw` boundary; `@struct` fields cannot be
+  `Vec`s yet (they would need nested RAII destructors).
+- Element-type inference for an empty list handed through `mut(...)` follows one call level; use `[0] * 0` for deeper chains.
+- Helpers are monomorphic over container layouts: do not pass a stack list to a parameter that also receives a heap `Vec`.
+- Deep recursion with large stack-bounded vecs (up to 64 KB per frame) can exhaust the stack; there is no recursion guard.
+- Fault reports are written to a fixed file name per process (set `PA_FAULT_PATH` when running several processes in one directory).
+- The first `.paw` call pays CPython start-up and import cost (about 0.1 s with numpy on the development machine).
+- Not supported: `**`, `dict` / `set` / `tuple`, closures, generators, `try/except`. `f32` values print as the widened `f64`.
+
+**Roadmap:** nested `Vec` fields with RAII, a generic `**` and integer power, string slicing as spans, macOS and Windows
+toolchains, a static `libpython` option for self-contained binaries, a recursion-depth guard.
+
+`alloc(T, n)` / `free(p)` exist for FFI-style code; `span(arr, start, len)` is a zero-copy view; `copy(dst, src, count)`
+is `memcpy`. Pointer bugs are diagnosed statically where possible (`PA_E004`, `PA_E040`, `PA_E070`).
+
+---
+
+## 6. Runtime semantics and faults
+
+### 6.1 Differences from Python (by design)
+
+| Topic | Pa behaviour | Python |
+|---|---|---|
+| Integer `//`, `%` | C semantics: truncation toward zero (`-7 // 2 == -3`, `-7 % 3 == -1`) | floors |
+| Float `%` | C `fmod` (`-1.0 % 6.283 == -1.0`) | floored |
+| Integer `//`, `%` by zero | `ZeroDivisionError` fault (both modes); `INT_MIN // -1` does not trap | exception |
+| Float `/` by zero | IEEE `inf` / `nan` | exception |
+| Integer overflow | wraps in 64 bits | big integers |
+| Indexing | `0 ≤ i < len` only; **negative indexes are out of range** (write `a[len(a) - 1]`) | negative indexes wrap |
+| `range(a, b, step)` | variable step allowed; `step == 0` → `ValueError`; direction chosen before the loop | same |
+| Strings | UTF-8 bytes | code points |
+| `print` | Python `repr` formatting (`15.0`, `0.30000000000000004`, `1e+20`, `True`) | — |
+| Variable types | one type per variable | dynamic |
+
+### 6.2 Faults
+
+A runtime fault never corrupts state silently:
+
+- **Executables:** write a JSON report (`pa_runtime_fault.json` or `pa_boundary_fault.json`, or the path in
+  `PA_FAULT_PATH`), print a one-line summary and exit with code **70**.
+- **Shared libraries:** the fault is recorded in thread-local storage and control returns to the host (section 8.5).
+
+Runtime fault report: `{"mode", "kind", "detail", "function", "line"}` with `kind` one of `ZeroDivisionError`,
+`IndexError`, `ValueError`, `OverflowError`. Narrowing never truncates silently: an `int` passed to a `u8`/`i32`
+parameter is range-checked (a literal that does not fit is a compile error).
+
+### 6.3 Modes
+
+| | `--mode dev` (default) | `--mode prod` |
+|---|---|---|
+| Bounds checks on every variable index (incl. each dimension of `m[i, j]`, `span`, `str`) | yes (`IndexError`) | no (C-like) |
+| Division by zero, `range` step 0, `.paw` narrowing | checked | checked |
+| Narrowing on assignments / arguments / fields | checked | not checked |
+| `.paw` static lint (section 7.5) | deep | signatures only |
+| Boundary customs | full element scans, snapshots up to 1024 elements | scalar customs, no per-element NaN scan, snapshots up to 16 elements |
+
+Ship only code that is clean in dev.
+
+---
+
+## 7. The `.paw` boundary
+
+### 7.1 Signatures
+
+```python
+# np_ops.paw — free to import numpy, but the signature is locked
+import numpy as np
+
+def sum_array(arr: span[float]) -> float:
+    return float(np.sum(np.frombuffer(arr, dtype=np.float64)))
+```
+```python
+# main.pa — reads like a normal module; x is inferred as float
+import np_ops
+
+def main() -> int:
+    arr = [1.0, 2.0, 3.0, 4.0]
+    x = np_ops.sum_array(arr)
+    return 0
+```
+
+| Direction | Allowed types |
+|---|---|
+| Parameters | `i32 i64 u8 f32 f64 bool` (and `int`/`float`), `str_view`, `span[T]`, `list[T, N]`, `Vec[T]` (T numeric) |
+| Return | numeric scalar, `Vec[T]`, or `void` — **never a string** (return `Vec[u8]` and let Pa own the bytes) |
+
+Errors: missing signature `PA_E080`, unsupported type `PA_E082`, mismatching call `PA_E090` (a float is never accepted for
+an integer parameter). Inside a `.paw`, the type names (`span`, `Vec`, `i32`, …) and `@allow_nan` are pre-defined builtins.
+
+### 7.2 Front end
+
+When `infer.py` meets `import x` and `x.paw` exists, it parses **only** the public function signatures into the symbol
+table. `x.f(arr)` is then typed statically; the Python body is never analysed by the compiler.
+
+### 7.3 Back end: marshaling stubs
+
+`codegen.py` does not compile `.paw` files. Each call site emits a stub that fills an argument table and calls
+`pa_call_paw(module, function, args, nargs, ret_tag, ret_elem, flags, &ret)` in `runtime_bridge.c`:
+
+- scalars → `PyLong` / `PyFloat` / `PyBool`; strings → `str`;
+- contiguous buffers (`list[T, N]`, `Vec[T]`, `span[T]`) → `PyMemoryView_FromMemory` cast to the element format: **zero
+  copy**, so `np.frombuffer(arr, …)` reads Pa memory directly (the view is read-only);
+- the result is checked, then unboxed into native values (`Vec[T]` results are copied into a malloc'd buffer owned by Pa).
+
+### 7.4 Two-way customs
+
+| Direction | Checked |
+|---|---|
+| **Out-bound** `PA_TO_PY_IN` | NaN / Inf (scalars; buffers in dev), `NULL` pointer with length > 0, negative length, narrowing range |
+| **In-bound** `PY_TO_PA_OUT` | `None`, NaN / Inf, type drift (e.g. `int` where `float` was declared, `bool` for an integer), integer out of range, buffer format mismatch, Python exceptions |
+| **Start-up** `STARTUP` | embedded Python cannot be initialised (section 7.7) |
+
+Any violation fuses immediately and writes `pa_boundary_fault.json`:
+
+```json
+{
+  "mode": "dev",
+  "direction": "PY_TO_PA_OUT",
+  "worker": "np_ops.sum_array",
+  "violation": "return: None where f64 was declared",
+  "in_payload_snapshot": [{"index": 0, "type": "buffer<f64>", "len": 4, "truncated": false, "values": [1, 2, 3, 4]}]
+}
+```
+
+**Deterministic bisection (replay in seconds).** Replay `in_payload_snapshot` against the bare `.paw` function: valid
+input and wrong output means the `.paw` is at fault; correct worker output but wrong final state means the Pa core is.
+`@allow_nan` on a `.paw` function waives only the NaN/Inf checks for that function, in both directions.
+
+### 7.5 Static lint of `.paw` bodies (dev mode)
+
+Beyond the signature rules, dev builds lint every imported `.paw`: returns that cannot match the declared type
+(`None`, an `int` literal for `f64`, `float()`/`int()`/`len()` mismatches), paths that fall off the end and return `None`
+(`PA_E083`), and writes into read-only input buffers (`PA_E084`).
+
+### 7.6 Embedding and run-time resolution
+
+Imported `.paw` sources are **embedded in the binary** (no source directory is baked in); the module's `__file__` is
+`<embedded>/<name>.paw`, so `.paw` code must not rely on it. The location of CPython is resolved at run time:
+
+| What | Priority (first match wins) |
+|---|---|
+| `.paw` sources | `PA_PATH` directories (live-edit override) → sources embedded in the binary |
+| Python home | `PA_PYTHON_HOME` → `PYTHONHOME` → `<binary dir>/python-home` → build-time default (only if it contains a stdlib) |
+| `sys.path` | `PA_PYPATH` → `$VIRTUAL_ENV/lib/pythonX.Y/site-packages` → build-time defaults (only entries that still exist) |
+
+Build-time defaults are the building interpreter's prefix and its `purelib`/`platlib`; `--python-home` and
+`--python-path` override them and `--relocatable` bakes none. A binary that links no `.paw` links no Python at all.
+Shared libraries loaded into a running Python reuse the host interpreter and never touch `PYTHONHOME`.
+
+### 7.7 Deployment and diagnosing a missing Python
+
+A missing `libpython` makes the **dynamic loader** abort before any Pa code runs (`error while loading shared
+libraries: libpython3.12.so.1.0`, exit 127), so detection lives in the toolchain:
+
+- `pac doctor` — checks the build machine (gcc, llvmlite, `Python.h`, shared `libpython`) and prints install hints.
+- `pac doctor ./app` — reads the binary's ELF `DT_NEEDED` / `RPATH` / `RUNPATH`, resolves each library with the loader's
+  search order, lists what is missing, shows which Python home will be used and how to fix it (exit code 1 if it cannot start).
+- `pac bundle ./app [--with-stdlib]` — copies `libpython3.X.so` next to the binary (found through the `$ORIGIN` rpath);
+  `--with-stdlib` also ships a trimmed stdlib as `./python-home`, giving a binary that runs with no environment variables.
+  Third-party packages (numpy, …) are never bundled: provide them with `PA_PYPATH` / `VIRTUAL_ENV`.
+- After the loader succeeds, a bad or missing Python home becomes a friendly `STARTUP` fault (exit 70) naming the fix.
+
+---
+
+## 8. Compiler architecture
+
+### 8.1 Pipeline
+
+```mermaid
+flowchart LR
+    SRC[".pa source"] --> AST["ast.parse"]
+    AST --> VAL["validator.py<br/>subset, boundary, borrow,<br/>definite assignment, limits"]
+    PAW[".paw headers"] --> INF
+    VAL --> INF["infer.py<br/>types, escape analysis,<br/>storage classes"]
+    INF --> DIAG["diagnostics.py<br/>JSON repair tickets"]
+    INF --> CG["codegen.py<br/>llvmlite IR"]
+    CG --> OBJ["LLVM O2 → object"]
+    OBJ --> LINK["gcc link"]
+    CORE["runtime_core.c"] --> LINK
+    BRIDGE["runtime_bridge.c<br/>+ embedded .paw sources"] --> LINK
+    WRAP["@export wrappers<br/>(--shared)"] --> LINK
+    LINK --> BIN["native binary / .so"]
+```
+
+### 8.2 Modules
+
+| File | Role |
+|---|---|
+| `pa_lang/types.py` | Memory-layout type system, intrinsics and builtins registry, `int`/`float` display names |
+| `pa_lang/infer.py` | Zero-annotation inference to a fixed point, stack-bound escape analysis, `Vec` promotion, alias and temporary-string checks, editor hints |
+| `pa_lang/validator.py` | Subset rules, `.paw` import rules, batching, borrow (`mut`) checks, definite assignment, readability limits |
+| `pa_lang/paw.py` | `.paw` header parsing, signature validation, dev-mode deep lint |
+| `pa_lang/diagnostics.py` | Diagnostic catalogue, JSON tickets, `@struct` surgery for `PA_E030` |
+| `pa_lang/codegen.py` | llvmlite IR generation (libc and runtime symbols declared up front), bounds/division/narrowing checks, marshaling stubs |
+| `pa_lang/build.py` | Object emission and linking, embedding of `.paw` sources, `@export` wrappers, Python path baking |
+| `pa_lang/runtime_core.c` | Fault raising, thread-local guards for shared libraries, Python-compatible `print` helpers (no Python dependency, always linked) |
+| `pa_lang/runtime_bridge.c` | Embedded CPython, customs, marshaling, start-up diagnostics |
+| `pa_lang/doctor.py` | ELF inspection, `pac doctor`, `pac bundle` |
+| `pa_lang/lsp_server.py` | Language server |
+| `pa_lang/cli.py` | `pac` entry point |
+
+### 8.3 Inference and escape analysis
+
+Per function, one walk assigns types to every expression; a list created by `[]` is a placeholder whose element type is
+fixed by its first `append`. A second analysis computes, per list, whether it escapes (returned, stored in a struct, handed
+to `mut(...)`) and an upper bound on its appends (constant `range` bounds multiplied through nested loops;
+`while` and variable bounds are unbounded). Result: stack-bounded vec if it does not escape, is bounded and ≤ 64 KB;
+otherwise a heap vec. Call-site argument types and return types are propagated until nothing changes.
+
+### 8.4 Code generation
+
+- Scalars are SSA values; fixed lists, vecs and structs are handled by address. `StackVec` and `Vec` share the header
+  `{T*, i64 len, i64 cap}` (a stack vec's pointer targets an entry-block `alloca`).
+- Functions take scalars, views and pointers by value and aggregates by pointer; aggregates are returned by value.
+- Emitted checks: bounds (dev), integer division by zero, `range` step, narrowing, and RAII `free` on every exit path of
+  heap locals that are not returned.
+- LLVM `-O2` runs before object emission.
+
+### 8.5 `--shared` libraries and the guarded ABI
+
+`@export` functions keep their names; the compiler renames the implementation (`pa_impl_<name>`) and links a C wrapper
+that installs a `setjmp` guard. A fault (Pa runtime or `.paw` boundary, after releasing the GIL) records the error in
+thread-local storage and returns `0` to the host, which polls `pa_error_code()`, `pa_error_message()`, `pa_error_json()`
+and clears it with `pa_error_clear()` (see `examples/web_shell/app.py: checked`).
+
+| Pa parameter | C ABI |
+|---|---|
+| `int`, `float`, `i32`, `u8`, `f32`, `bool` | by value |
+| `span[T]`, `str_view` | `struct { void *p; int64_t n; }` by value |
+| `ptr[T]`, `list[T, N]` | pointer to the first element |
+| `Vec[T]` | pointer to `{T*, i64 len, i64 cap}` |
+
+---
+
+## 9. Diagnostics for AI agents
+
+`pac check --ai-diagnostic` prints a JSON array of self-contained repair tickets:
+
+| Field | Meaning |
+|---|---|
+| `code`, `category`, `severity` | stable identifier, family, `error` / `warning` |
+| `skill_rule_ref` | the skill rule that explains it |
+| `location` | file, line, column |
+| `summary` | one-line description |
+| `inferred_context` | the types, layouts or values the compiler inferred |
+| `causal_chain` | from the definition to the violation |
+| `source_context` | the offending line with ±3 lines of source |
+| `repair_plan` | `strategy`, `anti_patterns_to_avoid`, `suggested_patches` (deterministic replacement code) |
+
+| Family | Codes |
+|---|---|
+| Syntax / subset | `PA_E000` syntax error · `PA_E003` forbidden construct · `PA_E031` forbidden data type |
+| Host isolation / boundary | `PA_E001` third-party import in `.pa` · `PA_E002` boundary call in a loop · `PA_E080` missing `.paw` signature · `PA_E082` bad boundary type · `PA_E083` `.paw` return mismatch (dev) · `PA_E084` write to read-only input (dev) · `PA_E090` bad `.paw` call |
+| Annotations | `PA_E005` forbidden annotation · `PA_E081` incomplete `@export` · `PA_E085` return annotation mismatch |
+| Layout / inference | `PA_E011` uninferable empty list · `PA_E030` heterogeneous list (with `@struct` surgery) · `PA_E071` implicit heap slice / concat · `PA_E086` variable changes type · `PA_E088` possibly unassigned |
+| Memory safety | `PA_E004` alloc leak / use after free · `PA_E040` span of a local returned · `PA_E070` pointer alias · `PA_E072` temporary `String` · `PA_E073` negative index · `PA_E087` mutation while iterating · `PA_E089` `mut` aliasing |
+| Borrow / style | `PA_E050` missing `mut()` · `PA_E051` use keyword arguments · `PA_E060` / `PA_E061` / `PA_E062` size, complexity, nesting |
+| Performance | `PA_W001` stack copy above 4 KB (warning) |
+
+`PA_E030` tickets contain a generated `@struct` definition and the rewritten literal, turning a mixed 2-D table into a
+contiguous `Vec<Record>` (AoS).
+
+---
+
+## 10. Tooling
+
+### 10.1 `pac`
+
+| Command | Purpose |
+|---|---|
+| `pac check [--ai-diagnostic] [--mode dev\|prod] PATH…` | Front-end checks on files or directories (`.pa` and `.paw`); exit 1 on errors |
+| `pac build FILE [-o OUT] [--mode dev\|prod] [--shared] [--emit-ir] [--python-home P] [--python-path S]… [--relocatable]` | Compile to a native executable or shared library |
+| `pac lsp` | Language server over stdio |
+| `pac doctor [BINARY]` | Environment or binary diagnosis (section 7.7) |
+| `pac bundle BINARY [--dest D] [--with-stdlib]` | Ship `libpython` (and a stdlib) next to a binary |
+| `pac --version` | Print the version |
+
+### 10.2 Environment variables
+
+| Variable | Effect |
+|---|---|
+| `PA_PATH` | Directories searched first for live `.paw` files |
+| `PA_PYTHON_HOME`, `PA_PYPATH` | Python home and `sys.path` entries (run time) |
+| `PA_FAULT_PATH` | Where fault reports are written |
+| `PA_LSP_AUTORELOAD=0`, `PA_LSP_WATCH_DIR` | Disable / redirect the language server's auto-restart |
+| `PA_ALLOW_UNSUPPORTED_PLATFORM=1` | Attempt `pac build` off Linux |
+| `PA_*_DATA_DIR` | Data directory of an example (default: current directory) |
+
+### 10.3 Language server and VS Code extension
+
+`pac lsp` provides diagnostics, inlay hints and hover. It watches its own source files and exits when they change; the
+client restarts it, so the editor never shows stale diagnostics.
+
+- **Inlay hints** (`pa.inlayHints.detail`): `simple` (default) shows Python names only — `: int`, `: float`,
+  `: list[float]`, `: str`, `: Point`, `[🌉 .paw → float]` — while narrow types stay loud (`: i32`, `: u8`).
+  `detailed` adds sizes and memory strategy — `: list[float, 16] (128B flat)`, `: StackVec<int, max=64> (Zero-Heap)`,
+  `: Vec<int> (RAII)`, `[free: RAII]`, `[memcpy 128B]`, `[🌉 .paw FFI -> float]`.
+- **Hover audit card**: `int (i64, 8B, stack)`, LLVM layout, size and element stride, stack/heap placement, the line(s)
+  where RAII inserts `free`, the function's cyclomatic complexity, and a warning for narrow types.
+- **Extension** (`vscode-pa/`): registers the languages `pa` and `paw`; the TextMate grammar inherits Python's
+  (`source.paw → source.pa → source.python`) and colours the intrinsics (`mut span copy alloc free`), the decorators
+  (`@struct @export @allow_nan`) and the Pa types. Commands: restart the server, build (dev / prod), check with
+  `--ai-diagnostic`. Settings: `pa.pacPath` (default: `<workspace>/.venv/bin/pac`, then `pac`), `pa.inlayHints.detail`.
+
+---
+
+## 11. AI skills
+
+Three skill packs in `skills/` drive coding agents; each ends in the same gate (`pac check --ai-diagnostic` until green,
+dev mode first).
+
+| Skill | When | Core workflow |
+|---|---|---|
+| `pa-coder` | New projects | Host-First skeleton (or a thin web shell) → write zero-annotation `.pa` with `-> T` on every function → contiguous data layout (`@struct`, `[x] * n`, `[0] * 0`) → quarantine libraries in `.paw` → self-heal with tickets |
+| `py-to-pa` | Accelerate a Python repository | **Three-colour gate** per module — 🟢 pure compute: convert fully; 🟡 libraries or web framework: invert control (Pa host + `.paw`, or a thin router shell); 🔴 heavy metaprogramming: stop with `STATUS: RED - Keep in .py worker layer + <one-sentence blocker>` — then convert, then prove with a differential test and timing report |
+| `cpp-to-pa` | Modernise legacy C++ | Map `std::array`, `std::vector`, `struct`, `std::span`, `const T&` one-to-one to fixed lists, vecs, `@struct`, `span`, default borrows; strip macros and raw owning pointers; byte-level differential fuzzing |
+
+Hard rules the skills enforce (most are also compiler diagnostics): temporary strings bound to locals; empty lists
+declared with `[0] * 0`; no slicing; no negative indexes; one type per variable; assign before use; never mutate a list
+being iterated; no `mut` aliasing; one single-line comment above every non-obvious function; explicit awareness of the
+integer / float `%` and `//` semantics when porting; `.paw` modules never return strings.
+
+---
+
+## 12. Repository layout
+
+```
+pa/
+├── pyproject.toml            package metadata (entry point: pac = pa_lang.cli:main)
+├── LICENSE  README.md  ARCHITECTURE.md  CHANGELOG.md  RELEASING.md
+├── pa_lang/                  compiler, runtimes, language server
+├── skills/                   pa-coder · py-to-pa · cpp-to-pa
+├── vscode-pa/                VS Code extension (grammar, client, tests)
+├── examples/
+│   ├── pipeline_demo/        host-first demo (.pa + .paw)
+│   ├── web_shell/            FastAPI router shell over a guarded .so
+│   ├── benchmark/            CPython vs Pa loops
+│   ├── utm/ delaunator/ levenshtein/ kdtree/    differential benchmarks
+├── tests/                    pytest suites
+└── .github/workflows/        CI and release
+```
+
+---
+
+## 13. Testing and verification
+
+| Suite | Covers |
+|---|---|
+| `test_infer`, `test_validator` | inference, storage classes, escape analysis, every diagnostic |
+| `test_codegen`, `test_features`, `test_hardening` | end-to-end compile-and-run, runtime faults, big lists, strings, 2-D indexing, narrowing, guarded shared libraries, the FastAPI shell |
+| `test_lsp`, `test_lsp_stdio`, `vscode-pa/test` | hints, hover, real LSP JSON-RPC round trips, TextMate scopes |
+| `test_relocation`, `test_doctor` | embedded `.paw`, run-time Python resolution, `pac doctor` / `pac bundle`, start-up faults |
+| `test_release` | single-sourced version, metadata, license, workflows, platform guard |
+
+Each example under `examples/` ships a verification script that compares the native binary against a pure-Python
+reference on randomized data (exact for integers and sets, `< 1e-9` for floats) and prints a speed-up table:
+
+| Example | Stresses | Indicative compute speed-up* |
+|---|---|---|
+| `utm` | float math, `libm`, special-zone branching, 100 k points | ≈ 165–250× |
+| `delaunator` | dynamic `Vec` growth, `while` loops, half-edge index jumps | ≈ 17× |
+| `levenshtein` | byte spans, rolling arrays, flattened 2-D DP, `String` RAII, 50 k pairs | ≈ 65–95× |
+| `kdtree` | recursion, nested `@struct`, manual-stack search, PIL rendering through a `.paw` | ≈ 22–29× |
+| `benchmark` | 5·10⁷-iteration integer and float loops | ≈ 110× |
+
+\* Measured on the development machine against CPython 3.12; indicative only.
+
+---
+
+## 14. Platform support, limits and roadmap
+
+**Supported:** Linux (x86-64, aarch64), CPython 3.11–3.13 with headers and a shared `libpython`, `gcc`. `pac check`,
+`pac lsp` and `pac build --emit-ir` are platform independent; `pac build`, `doctor` and `bundle` rely on ELF and
+`/proc/self/exe` and refuse other platforms (`PA_ALLOW_UNSUPPORTED_PLATFORM=1` overrides).
+
+**Current limits**
+
+- No string slicing; a `.paw` cannot return a string; structs cannot cross the `.paw` boundary; `@struct` fields cannot be
+  `Vec`s yet (they would need nested RAII destructors).
+- Element-type inference for an empty list handed through `mut(...)` follows one call level; use `[0] * 0` for deeper chains.
+- Helpers are monomorphic over container layouts: do not pass a stack list to a parameter that also receives a heap `Vec`.
+- Deep recursion with large stack-bounded vecs (up to 64 KB per frame) can exhaust the stack; there is no recursion guard.
+- Fault reports are written to a fixed file name per process (set `PA_FAULT_PATH` when running several processes in one directory).
+- The first `.paw` call pays CPython start-up and import cost (hundreds of milliseconds with numpy).
+- Not supported: `**`, `dict` / `set` / `tuple`, closures, generators, `try/except`, `f32` printing shorter than the widened `f64`.
+
+**Roadmap:** nested `Vec` fields with RAII, a generic `**` and integer power, string slicing as spans, macOS and Windows
+toolchains, a static `libpython` option for self-contained binaries, a recursion-depth guard.

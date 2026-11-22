@@ -1,23 +1,51 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pa-lang"
-version = "0.1.0"
-description = "Pa language: Python-syntax, C++-layout, LLVM-compiled systems language"
-requires-python = ">=3.10"
-dependencies = ["llvmlite", "pygls"]
+dynamic = ["version"]
+description = "Pa language: Python-syntax, C++-memory-layout, LLVM-compiled systems language with .paw bridges to the Python ecosystem"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "cyyier" }]
+keywords = ["compiler", "llvm", "python", "systems-programming", "ffi", "language"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: C",
+    "Topic :: Software Development :: Compilers",
+    "Topic :: Software Development :: Code Generators",
+]
+dependencies = ["llvmlite>=0.50", "pygls>=2.1"]
 
 [project.optional-dependencies]
 dev = ["pytest"]
 web = ["fastapi", "httpx", "uvicorn"]
+release = ["build", "twine"]
+
+[project.urls]
+Homepage = "https://palang.dev"
+Repository = "https://github.com/cyyier/pa"
+Issues = "https://github.com/cyyier/pa/issues"
+Changelog = "https://github.com/cyyier/pa/blob/main/CHANGELOG.md"
 
 [project.scripts]
 pac = "pa_lang.cli:main"
 
 [tool.setuptools]
 packages = ["pa_lang"]
+
+[tool.setuptools.dynamic]
+version = { attr = "pa_lang.__version__" }
 
 [tool.setuptools.package-data]
 pa_lang = ["*.c"]

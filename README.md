@@ -1,12 +1,14 @@
 # Pa
 
 Python-syntax, C++-memory-layout, LLVM-compiled systems language. `*.pa` files compile to native code;
-`*.paw` files are plain Python "crossing zones" with locked `In -> Out` signatures. Full spec: [ARCHITECTURE.md](ARCHITECTURE.md);
-AI skills: [skills/](skills/).
+`*.paw` files are plain Python "crossing zones" with locked `In -> Out` signatures. Full spec: [ARCHITECTURE.md](https://github.com/cyyier/pa/blob/main/ARCHITECTURE.md);
+AI skills: [skills/](https://github.com/cyyier/pa/tree/main/skills). Homepage: <https://palang.dev>.
 
 ## Quick start
+Requirements: Linux, CPython 3.11-3.13 with headers and a shared `libpython` (e.g. `uv python install 3.12`), `gcc`.
 ```bash
-pip install -e ".[dev]"            # provides `pac`; needs gcc and a CPython with headers (e.g. `uv python install 3.12`)
+pip install pa-lang                # provides `pac`   (from a checkout: pip install -e ".[dev]")
+pac doctor                         # verifies the toolchain on this machine
 pac check --ai-diagnostic examples # JSON repair tickets for AI agents
 pac build examples/pipeline_demo/main.pa -o demo && ./demo
 pac build lib.pa --shared -o lib.so     # @export functions for a Python/web shell (see examples/web_shell)
@@ -44,3 +46,6 @@ Third-party packages (numpy, ...) are never bundled: provide them with `PA_PYPAT
 pytest -q                          # compiler, codegen, LSP, web shell, hardening, relocation
 (cd vscode-pa && npm test)         # TextMate grammar
 ```
+
+## License
+MIT, see [LICENSE](https://github.com/cyyier/pa/blob/main/LICENSE). Release process: [RELEASING.md](https://github.com/cyyier/pa/blob/main/RELEASING.md); history: [CHANGELOG.md](https://github.com/cyyier/pa/blob/main/CHANGELOG.md).

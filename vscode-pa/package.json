@@ -3,34 +3,88 @@
   "displayName": "Pa Language",
   "description": "Pa (.pa / .paw): syntax, inferred-type inlay hints, memory-audit hover and diagnostics via `pac lsp`",
   "version": "0.1.0",
-  "publisher": "pa-lang",
+  "publisher": "cyyier",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://example.invalid/pa-lang" },
-  "engines": { "vscode": "^1.82.0" },
-  "categories": ["Programming Languages"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cyyier/pa.git",
+    "directory": "vscode-pa"
+  },
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
   "main": "./src/extension.js",
-  "activationEvents": ["onLanguage:pa", "onLanguage:paw"],
+  "activationEvents": [
+    "onLanguage:pa",
+    "onLanguage:paw"
+  ],
   "contributes": {
     "languages": [
-      { "id": "pa", "aliases": ["Pa", "pa"], "extensions": [".pa"], "configuration": "./language-configuration.json" },
-      { "id": "paw", "aliases": ["Pa Worker", "paw"], "extensions": [".paw"], "configuration": "./language-configuration.json" }
+      {
+        "id": "pa",
+        "aliases": [
+          "Pa",
+          "pa"
+        ],
+        "extensions": [
+          ".pa"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "paw",
+        "aliases": [
+          "Pa Worker",
+          "paw"
+        ],
+        "extensions": [
+          ".paw"
+        ],
+        "configuration": "./language-configuration.json"
+      }
     ],
     "grammars": [
-      { "language": "pa", "scopeName": "source.pa", "path": "./syntaxes/pa.tmLanguage.json" },
-      { "language": "paw", "scopeName": "source.paw", "path": "./syntaxes/paw.tmLanguage.json" }
+      {
+        "language": "pa",
+        "scopeName": "source.pa",
+        "path": "./syntaxes/pa.tmLanguage.json"
+      },
+      {
+        "language": "paw",
+        "scopeName": "source.paw",
+        "path": "./syntaxes/paw.tmLanguage.json"
+      }
     ],
     "commands": [
-      { "command": "pa.restartServer", "title": "Pa: Restart Language Server" },
-      { "command": "pa.buildDev", "title": "Pa: Build Current File (dev)" },
-      { "command": "pa.buildProd", "title": "Pa: Build Current File (prod)" },
-      { "command": "pa.check", "title": "Pa: Check Current File (--ai-diagnostic)" }
+      {
+        "command": "pa.restartServer",
+        "title": "Pa: Restart Language Server"
+      },
+      {
+        "command": "pa.buildDev",
+        "title": "Pa: Build Current File (dev)"
+      },
+      {
+        "command": "pa.buildProd",
+        "title": "Pa: Build Current File (prod)"
+      },
+      {
+        "command": "pa.check",
+        "title": "Pa: Check Current File (--ai-diagnostic)"
+      }
     ],
     "configuration": {
       "title": "Pa",
       "properties": {
         "pa.inlayHints.detail": {
           "type": "string",
-          "enum": ["simple", "detailed"],
+          "enum": [
+            "simple",
+            "detailed"
+          ],
           "default": "simple",
           "enumDescriptions": [
             "Python-style names only: `: int`, `: float`, `: list[float]`, `: str`; narrow types stay loud (`: i32`, `: u8`). Memory details live in the hover card.",
@@ -46,22 +100,78 @@
       }
     },
     "configurationDefaults": {
-      "[pa]": { "editor.inlayHints.enabled": "on", "editor.semanticHighlighting.enabled": true, "editor.tabSize": 4, "editor.insertSpaces": true },
-      "[paw]": { "editor.inlayHints.enabled": "on", "editor.tabSize": 4, "editor.insertSpaces": true },
+      "[pa]": {
+        "editor.inlayHints.enabled": "on",
+        "editor.semanticHighlighting.enabled": true,
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true
+      },
+      "[paw]": {
+        "editor.inlayHints.enabled": "on",
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true
+      },
       "editor.tokenColorCustomizations": {
         "textMateRules": [
-          { "scope": "support.function.intrinsic.pa", "settings": { "foreground": "#FF8C42", "fontStyle": "bold" } },
-          { "scope": ["meta.decorator.pa entity.name.function.decorator.pa", "punctuation.decorator.pa"], "settings": { "foreground": "#4EC9B0", "fontStyle": "bold" } },
-          { "scope": "support.type.primitive.pa", "settings": { "foreground": "#4FC1FF" } },
-          { "scope": "support.type.generic.pa", "settings": { "foreground": "#4FC1FF", "fontStyle": "italic" } }
+          {
+            "scope": "support.function.intrinsic.pa",
+            "settings": {
+              "foreground": "#FF8C42",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": [
+              "meta.decorator.pa entity.name.function.decorator.pa",
+              "punctuation.decorator.pa"
+            ],
+            "settings": {
+              "foreground": "#4EC9B0",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "support.type.primitive.pa",
+            "settings": {
+              "foreground": "#4FC1FF"
+            }
+          },
+          {
+            "scope": "support.type.generic.pa",
+            "settings": {
+              "foreground": "#4FC1FF",
+              "fontStyle": "italic"
+            }
+          }
         ]
       }
     }
   },
   "scripts": {
     "test": "node --test test/*.test.js",
-    "package": "vsce package --skip-license --no-yarn"
+    "package": "vsce package"
   },
-  "dependencies": { "vscode-languageclient": "^9.0.1" },
-  "devDependencies": { "vscode-oniguruma": "^2.0.1", "vscode-textmate": "^9.1.0", "@vscode/vsce": "^3.0.0" }
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.1.0",
+    "@vscode/vsce": "^3.0.0"
+  },
+  "author": {
+    "name": "cyyier"
+  },
+  "homepage": "https://palang.dev",
+  "bugs": {
+    "url": "https://github.com/cyyier/pa/issues"
+  },
+  "keywords": [
+    "pa",
+    "paw",
+    "pac",
+    "llvm",
+    "python",
+    "language-server"
+  ]
 }

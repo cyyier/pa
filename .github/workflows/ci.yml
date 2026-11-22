@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Toolchain check
+        run: |
+          python -m pip install -e ".[dev,web]" numpy pillow
+          pac doctor
+      - name: Tests
+        run: pytest -q
+      - name: Examples type-check
+        run: pac check examples
+
+  vscode-extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: vscode-pa
+      - run: npm test
+        working-directory: vscode-pa
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install build twine
+      - run: python -m build
+      - run: twine check dist/*
+      - name: Wheel ships the C runtime
+        run: python -m zipfile -l dist/*.whl | grep -E "runtime_(bridge|core)\.c"

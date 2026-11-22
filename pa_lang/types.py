@@ -265,7 +265,6 @@ def promote(a: Type, b: Type) -> Type:
 # Compiler Intrinsics registry
 # ---------------------------------------------------------------------------
 INTRINSICS = {
-    "py_call": "py_call(worker, payload) -> py_workers boundary crossing",
     "mut": "mut(x) -> explicit mutable borrow",
     "span": "span(arr, start, len) -> zero-copy view",
     "copy": "copy(dst, src, count) -> llvm.memcpy",

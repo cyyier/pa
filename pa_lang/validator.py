@@ -67,7 +67,7 @@ class Validator:
             if isinstance(n, ast.Subscript) and isinstance(n.slice, ast.Tuple):
                 n.slice._in_subscript = True
         self.mutated = self.compute_mutated()
-        self.pycalling = self.compute_pycalling()
+        self.boundary_funcs = self.compute_pycalling()
 
     def run(self) -> None:
         self.check_imports()
@@ -144,6 +144,12 @@ class Validator:
     def check_call(self, n: ast.Call) -> None:
         if isinstance(n.func, ast.Name):
             name = n.func.id
+            if name == "py_call":
+                self.sink.report("PA_E003", n, "py_call() does not exist: cross the boundary with a .paw module",
+                                 inferred_context={"construct": "py_call"},
+                                 patches=[{"action": "create_file", "path": "tool.paw",
+                                           "replacement": "def fn(batch: span[f64]) -> f64:\n    ..."},
+                                          {"line": n.lineno, "replacement": "import tool\n... tool.fn(batch)"}])
             if name in FORBIDDEN_CALLS:
                 self.sink.report("PA_E003", n, f"'{name}()' (eval/reflection) is forbidden",
                                  inferred_context={"construct": name})
@@ -297,7 +303,7 @@ class Validator:
         self.check_signature(fn)
         self.check_body_annotations(fn)
         self.check_size(fn)
-        self.check_py_call_loops(fn)
+        self.check_boundary_calls_in_loops(fn)
         self.check_closures(fn)
 
     def check_signature(self, fn) -> None:
@@ -376,7 +382,7 @@ class Validator:
 
     # ---- batching rule -----------------------------------------------
     def compute_pycalling(self) -> set:
-        direct = {n for n, f in self.funcs.items() if any(self.is_py_call(x) for x in walk_code(f))}
+        direct = {n for n, f in self.funcs.items() if any(self.is_boundary_call(x) for x in walk_code(f))}
         changed = True
         while changed:
             changed = False
@@ -389,28 +395,26 @@ class Validator:
                     changed = True
         return direct
 
-    def is_py_call(self, n) -> bool:
-        """A boundary crossing: py_call(...) or a call into an imported .paw module."""
+    def is_boundary_call(self, n) -> bool:
+        """A boundary crossing: a call into an imported .paw module (`tool.fn(...)`)."""
         if not isinstance(n, ast.Call):
             return False
         f = n.func
-        if isinstance(f, ast.Name):
-            return f.id == "py_call"
         return isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id in self.paw_aliases
 
-    def check_py_call_loops(self, fn) -> None:
+    def check_boundary_calls_in_loops(self, fn) -> None:
         for loop in (n for n in walk_code(fn) if isinstance(n, LOOPS + (ast.ListComp,))):
             for n in walk_code(loop):
                 if not isinstance(n, ast.Call):
                     continue
-                if self.is_py_call(n) or (isinstance(n.func, ast.Name) and n.func.id in self.pycalling):
-                    via = "" if self.is_py_call(n) else f" (via '{n.func.id}')"
-                    self.sink.report("PA_E002", n, f"boundary call (py_call/.paw) inside a loop{via} in '{fn.name}'",
+                if self.is_boundary_call(n) or (isinstance(n.func, ast.Name) and n.func.id in self.boundary_funcs):
+                    via = "" if self.is_boundary_call(n) else f" (via '{n.func.id}')"
+                    self.sink.report("PA_E002", n, f"boundary call (.paw) inside a loop{via} in '{fn.name}'",
                                      inferred_context={"function": fn.name, "loop_line": loop.lineno},
-                                     causal_chain=[f"loop at line {loop.lineno}", f"py_call at line {n.lineno}{via}",
+                                     causal_chain=[f"loop at line {loop.lineno}", f".paw call at line {n.lineno}{via}",
                                                    "each iteration crosses the Pa<->Python boundary"],
                                      patches=[{"line": loop.lineno, "replacement":
-                                               "batch = [...]  # pack inputs first\nresult = py_call(\"worker.fn\", batch)  # single crossing"}])
+                                               "batch = [...]  # pack inputs first\nresult = tool.fn(batch)  # one .paw crossing"}])
                     break
 
     # ---- mutation analysis ------------------------------------------

@@ -9,3 +9,5 @@ pa_boundary_fault.json
 vscode-pa/node_modules/
 vscode-pa/*.vsix
 examples/kdtree/kdtree_voronoi.png
+dist/
+build/

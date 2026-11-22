@@ -46,7 +46,7 @@ test('manifest registers pa and paw languages, grammars and colours', () => {
 test('intrinsics, decorators and types get Pa scopes', async () => {
   const g = await (await makeRegistry()).loadGrammar('source.pa');
   const flat = (line, text) => scopesOf(g, line, text).flat();
-  for (const fn of ['mut', 'span', 'copy', 'alloc', 'free', 'py_call']) {
+  for (const fn of ['mut', 'span', 'copy', 'alloc', 'free']) {
     assert.ok(flat(`x = ${fn}(a, 1)`, fn).includes('support.function.intrinsic.pa'), fn);
   }
   assert.ok(flat('@struct', 'struct').includes('entity.name.function.decorator.pa'));

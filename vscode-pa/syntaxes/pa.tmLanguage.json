@@ -19,7 +19,7 @@
       }
     },
     "pa-intrinsics": {
-      "match": "\\b(mut|span|copy|alloc|free|py_call)\\b(?=\\s*\\()",
+      "match": "\\b(mut|span|copy|alloc|free)\\b(?=\\s*\\()",
       "name": "support.function.intrinsic.pa"
     },
     "pa-generic-types": {
