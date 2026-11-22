@@ -136,7 +136,7 @@ def python_link_info() -> dict:
         if fw_prefix and ldlib:
             cands.append(os.path.join(fw_prefix, ldlib))
         cands.append(os.path.join(sys.base_prefix, "Python"))
-        lib_file = next((os.path.abspath(c) for c in cands if os.path.isfile(c)), "")
+        lib_file = next((os.path.realpath(c) for c in cands if os.path.isfile(c)), "")
         libdir = os.path.dirname(lib_file) if lib_file else (search_dirs[0] if search_dirs else "")
         return {"include": include, "libdir": libdir, "lib_file": lib_file, "lib_name": lib_name, "dll_dir": libdir}
 

@@ -475,9 +475,14 @@ def bundle(binary: str, dest: Optional[str] = None, with_stdlib: bool = False) -
             return Report(ok=False, lines=[f"error: cannot find {lib_ref} on this machine to bundle"], fixes=install_hints(lib_ref))
         base = lib_ref.replace("\\", "/").rsplit("/", 1)[-1]
         target = os.path.join(dest, base)
-        if os.path.abspath(src) != os.path.abspath(target):
-            shutil.copy2(src, target)
-        rep.lines.append(f"bundled: {base} <- {src}")
+        real_src = os.path.realpath(src)
+        if os.path.abspath(real_src) != os.path.abspath(target):
+            shutil.copy2(real_src, target)
+            if fmt == "macho" and sys.platform == "darwin":
+                os.chmod(target, 0o755)
+                subprocess.run(["install_name_tool", "-id", f"@rpath/{base}", target], capture_output=True)
+                subprocess.run(["codesign", "--force", "--sign", "-", target], capture_output=True)
+        rep.lines.append(f"bundled: {base} <- {real_src}")
 
         if fmt == "macho" and sys.platform == "darwin" and dest == os.path.dirname(binary) and lib_ref.startswith("/"):
             new_ref = f"@rpath/{base}"
