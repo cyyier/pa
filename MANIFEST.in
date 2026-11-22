@@ -1,5 +1,5 @@
 include LICENSE README.md CHANGELOG.md RELEASING.md ARCHITECTURE.md
-recursive-include pa_lang *.c
+recursive-include pa_lang *.c *.md
 recursive-include tests *.py
 recursive-include skills *.md
 recursive-include examples *.pa *.paw *.py *.md

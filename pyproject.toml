@@ -48,7 +48,7 @@ packages = ["pa_lang"]
 version = { attr = "pa_lang.__version__" }
 
 [tool.setuptools.package-data]
-pa_lang = ["*.c"]
+pa_lang = ["*.c", "skills/*/SKILL.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

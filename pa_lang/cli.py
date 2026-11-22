@@ -72,6 +72,22 @@ def cmd_lsp(args) -> int:
     return 0
 
 
+def cmd_skill(args) -> int:
+    from .skills_cmd import run_skill_cmd
+    rc, out, err = run_skill_cmd(
+        name=args.name,
+        list_only=args.list,
+        output=args.output,
+        install=args.install,
+        global_install=args.global_install,
+    )
+    if out:
+        sys.stdout.write(out)
+    if err:
+        sys.stderr.write(err)
+    return rc
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="pac", description="Pa language compiler")
     from . import __version__
@@ -103,6 +119,16 @@ def main(argv=None) -> int:
     bu.set_defaults(fn=cmd_bundle)
     l = sub.add_parser("lsp", help="start the language server (stdio)")
     l.set_defaults(fn=cmd_lsp)
+    sk = sub.add_parser("skill", help="print or install Pa's AI agent SKILL.md files")
+    sk.add_argument("name", nargs="?", default="all",
+                    help="skill name: pa-coder | py-to-pa | cpp-to-pa | all (default: all)")
+    sk.add_argument("--list", action="store_true", help="list bundled skills")
+    sk.add_argument("-o", "--output", help="write SKILL.md content to a file instead of stdout")
+    sk.add_argument("--install", metavar="TARGET",
+                    help="install into an agent skills dir: claude | cursor | codex | antigravity | <dir>")
+    sk.add_argument("--global", dest="global_install", action="store_true",
+                    help="with --install claude|cursor|codex|antigravity, install to user home (~/) instead of project")
+    sk.set_defaults(fn=cmd_skill)
     args = ap.parse_args(argv)
     return args.fn(args)
 
