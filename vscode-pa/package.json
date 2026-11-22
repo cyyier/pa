@@ -34,8 +34,8 @@
           ".pa"
         ],
         "icon": {
-          "light": "./icons/pa.png",
-          "dark": "./icons/pa.png"
+          "light": "./icons/pa-file.png",
+          "dark": "./icons/pa-file.png"
         },
         "configuration": "./language-configuration.json"
       },
