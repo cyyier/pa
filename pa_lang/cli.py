@@ -125,9 +125,9 @@ def main(argv=None) -> int:
     sk.add_argument("--list", action="store_true", help="list bundled skills")
     sk.add_argument("-o", "--output", help="write SKILL.md content to a file instead of stdout")
     sk.add_argument("--install", metavar="TARGET",
-                    help="install into an agent skills dir: claude | cursor | codex | antigravity | <dir>")
+                    help="install into an agent skills dir: claude | cursor | codex | copilot | github | antigravity | <dir>")
     sk.add_argument("--global", dest="global_install", action="store_true",
-                    help="with --install claude|cursor|codex|antigravity, install to user home (~/) instead of project")
+                    help="with --install claude|cursor|codex|copilot|antigravity, install to user home (~/) instead of project")
     sk.set_defaults(fn=cmd_skill)
     args = ap.parse_args(argv)
     return args.fn(args)

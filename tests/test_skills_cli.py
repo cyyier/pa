@@ -68,3 +68,38 @@ def test_skill_unknown_name_returns_error(capsys):
     rc = pac_main(["skill", "nonexistent"])
     assert rc == 1
     assert "unknown skill" in capsys.readouterr().err
+
+
+def test_skill_install_idempotent_preserves_custom_and_supports_copilot(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    # Create a user custom skill alongside managed skills
+    custom_skill = tmp_path / ".claude" / "skills" / "my-custom" / "SKILL.md"
+    custom_skill.parent.mkdir(parents=True)
+    custom_skill.write_text("# user custom skill\n", encoding="utf-8")
+
+    # 1st install -> installed
+    assert pac_main(["skill", "--install", "claude"]) == 0
+    out1 = capsys.readouterr().out
+    assert out1.count("installed") == 3
+
+    # 2nd install -> up-to-date, custom skill untouched
+    assert pac_main(["skill", "--install", "claude"]) == 0
+    out2 = capsys.readouterr().out
+    assert out2.count("up-to-date") == 3
+    assert custom_skill.read_text(encoding="utf-8") == "# user custom skill\n"
+
+    # Simulate stale managed skill -> updated
+    managed = tmp_path / ".claude" / "skills" / "pa-coder" / "SKILL.md"
+    managed.write_text("# old version\n", encoding="utf-8")
+    assert pac_main(["skill", "--install", "claude"]) == 0
+    out3 = capsys.readouterr().out
+    assert "updated" in out3
+    assert out3.count("up-to-date") == 2
+    assert "# pa-coder" in managed.read_text(encoding="utf-8")
+    assert custom_skill.read_text(encoding="utf-8") == "# user custom skill\n"
+
+    # Copilot / GitHub target -> .github/skills/<name>/SKILL.md
+    assert pac_main(["skill", "--install", "copilot"]) == 0
+    capsys.readouterr()
+    for name in SKILL_ORDER:
+        assert (tmp_path / ".github" / "skills" / name / "SKILL.md").is_file()

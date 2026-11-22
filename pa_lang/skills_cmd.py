@@ -11,6 +11,8 @@ AGENT_TARGETS = {
     "claude": (".claude/skills", "~/.claude/skills"),
     "cursor": (".cursor/skills", "~/.cursor/skills"),
     "codex": (".codex/skills", "~/.codex/skills"),
+    "copilot": (".github/skills", "~/.copilot/skills"),
+    "github": (".github/skills", "~/.copilot/skills"),
     "antigravity": (".agent/skills", "~/.gemini/antigravity/skills"),
 }
 
@@ -72,16 +74,23 @@ def resolve_target_dir(target: str, global_install: bool = False) -> Path:
     return Path(os.path.expanduser(target))
 
 
-def install_skills(names: list[str], target: str, global_install: bool = False) -> list[Path]:
+def install_skills(names: list[str], target: str, global_install: bool = False) -> list[tuple[str, Path]]:
     base = resolve_target_dir(target, global_install=global_install)
-    written: list[Path] = []
+    results: list[tuple[str, Path]] = []
     for n in names:
         content = read_skill(n)
         dest = base / n / "SKILL.md"
+        if dest.is_file():
+            if dest.read_text(encoding="utf-8") == content:
+                results.append(("up-to-date", dest))
+                continue
+            status = "updated"
+        else:
+            status = "installed"
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(content, encoding="utf-8")
-        written.append(dest)
-    return written
+        results.append((status, dest))
+    return results
 
 
 def list_skills_text() -> str:
@@ -108,8 +117,8 @@ def run_skill_cmd(name: Optional[str], list_only: bool, output: Optional[str],
     if not selected:
         return 1, "", "error: no bundled SKILL.md files found\n"
     if install:
-        written = install_skills(selected, install, global_install=global_install)
-        lines = [f"installed {p}" for p in written]
+        results = install_skills(selected, install, global_install=global_install)
+        lines = [f"{status:10s} {p}" for status, p in results]
         return 0, "\n".join(lines) + "\n", ""
     text = render_skills(selected)
     if output:
