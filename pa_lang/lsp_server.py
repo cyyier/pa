@@ -153,7 +153,7 @@ def build_server():
     @server.feature(types.INITIALIZE)
     def on_initialize(params):
         opts = params.initialization_options or {}
-        if isinstance(opts, dict) and opts.get("hintDetail") in ("simple", "detailed"):
+        if isinstance(opts, dict) and opts.get("hintDetail") in ("off", "simple", "detailed"):
             options["detail"] = opts["hintDetail"]
 
     def analysis(uri: str) -> DocAnalysis:
@@ -181,6 +181,8 @@ def build_server():
 
     @server.feature(types.TEXT_DOCUMENT_INLAY_HINT)
     def inlay(params: types.InlayHintParams):
+        if options["detail"] == "off":
+            return []
         da = analysis(params.text_document.uri)
         return [types.InlayHint(position=types.Position(l, c), label=text, padding_left=True,
                                 kind=types.InlayHintKind.Type) for l, c, text in da.hints()]

@@ -131,6 +131,30 @@ def test_detailed_hints_via_initialization_options(tmp_path):
         c.p.kill()
 
 
+def test_inlay_hints_off_still_serves_hover(tmp_path):
+    (tmp_path / "np_ops.paw").write_text("def sum_array(arr: span[f64]) -> f64:\n    return 0.0\n")
+    main = tmp_path / "main.pa"
+    main.write_text(SRC)
+    uri = main.as_uri()
+    c = Client()
+    try:
+        c.request("initialize", {"processId": None, "rootUri": tmp_path.as_uri(), "capabilities": {},
+                                 "initializationOptions": {"hintDetail": "off"}})
+        c.notify("initialized", {})
+        c.notify("textDocument/didOpen", {"textDocument": {"uri": uri, "languageId": "pa", "version": 1, "text": SRC}})
+        hints = c.request("textDocument/inlayHint", {
+            "textDocument": {"uri": uri},
+            "range": {"start": {"line": 0, "character": 0}, "end": {"line": 20, "character": 0}}})["result"]
+        assert hints == []
+        hover = c.request("textDocument/hover", {"textDocument": {"uri": uri},
+                                                 "position": {"line": 3, "character": 5}})["result"]
+        assert "128 B" in hover["contents"]["value"]
+        c.request("shutdown", None)
+        c.notify("exit", None)
+    finally:
+        c.p.kill()
+
+
 def test_source_watcher_detects_edits(tmp_path):
     from pa_lang.lsp_server import SourceWatcher
     (tmp_path / "a.py").write_text("x = 1\n")

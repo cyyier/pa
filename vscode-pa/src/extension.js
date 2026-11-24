@@ -28,7 +28,7 @@ async function startClient() {
     { command, args: ['lsp'] },
     {
       documentSelector: [{ language: 'pa' }, { language: 'paw' }],
-      initializationOptions: { hintDetail: vscode.workspace.getConfiguration('pa').get('inlayHints.detail', 'simple') }
+      initializationOptions: { hintDetail: vscode.workspace.getConfiguration('pa').get('inlayHints.detail', 'off') }
     }
   );
   try {

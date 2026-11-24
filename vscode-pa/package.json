@@ -91,15 +91,17 @@
         "pa.inlayHints.detail": {
           "type": "string",
           "enum": [
+            "off",
             "simple",
             "detailed"
           ],
-          "default": "simple",
+          "default": "off",
           "enumDescriptions": [
-            "Python-style names only: `: int`, `: float`, `: list[float]`, `: str`; narrow types stay loud (`: i32`, `: u8`). Memory details live in the hover card.",
+            "Disabled (hover-only): keep the editor clean and inspect inferred types & memory layout on hover.",
+            "Python-style names only: `: int`, `: float`, `: list[float]`, `: str`; narrow types stay loud (`: int32`, `: uint8`). Memory details live in the hover card.",
             "Also show sizes and memory strategy: `: list[float, 16] (128B flat)`, `(Zero-Heap)`, `[free: RAII]`, `[memcpy ..]`."
           ],
-          "description": "How much the inline type hints show."
+          "description": "Whether and how much inline type hints show (hover memory-audit cards are always enabled)."
         },
         "pa.pacPath": {
           "type": "string",
@@ -110,13 +112,13 @@
     },
     "configurationDefaults": {
       "[pa]": {
-        "editor.inlayHints.enabled": "on",
+        "editor.inlayHints.enabled": "off",
         "editor.semanticHighlighting.enabled": true,
         "editor.tabSize": 4,
         "editor.insertSpaces": true
       },
       "[paw]": {
-        "editor.inlayHints.enabled": "on",
+        "editor.inlayHints.enabled": "off",
         "editor.tabSize": 4,
         "editor.insertSpaces": true
       },
