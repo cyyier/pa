@@ -125,6 +125,19 @@
       "editor.tokenColorCustomizations": {
         "textMateRules": [
           {
+            "scope": [
+              "source.pa entity.name.function.python",
+              "source.pa meta.function-call.generic.python",
+              "source.pa support.function.builtin.python",
+              "source.paw entity.name.function.python",
+              "source.paw meta.function-call.generic.python",
+              "source.paw support.function.builtin.python"
+            ],
+            "settings": {
+              "foreground": "#DCDCAA"
+            }
+          },
+          {
             "scope": "support.function.intrinsic.pa",
             "settings": {
               "foreground": "#FF8C42",

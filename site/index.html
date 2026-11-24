@@ -10,6 +10,13 @@
     name="description"
     content="Pa Language — The AI-Native Systems Language. Written by AI, auditable by humans, compiled to native C++ speed with two-way Python interop, deterministic JSON diagnostics, and flat RAII memory."
   />
+  <link rel="canonical" href="https://palang.dev/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Pa Language — The AI-Native Systems Language" />
+  <meta property="og:description" content="Written by AI, auditable by humans, compiled straight to native C++ speed with zero-copy Python interop." />
+  <meta property="og:url" content="https://palang.dev/" />
+  <meta property="og:image" content="https://palang.dev/Pa.png" />
+  <meta name="twitter:card" content="summary" />
 
   <!-- Fonts: Inter + JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -251,76 +258,50 @@
             </div>
           </div>
 
-          <!-- Right Column: AI-Native Closed-Loop SVG Diagram -->
+          <!-- Right Column: Minimalist 3-Circle Venn Diagram -->
           <div class="lg:col-span-7 w-full">
             <div class="bg-surface border hairline rounded-md overflow-hidden">
               <!-- Card Header -->
               <div class="flex items-center justify-between border-b hairline bg-canvas px-4 py-2.5 font-mono text-[11px]">
-                <span class="text-ink-primary font-semibold tracking-wider">AI-NATIVE EXECUTION LOOP</span>
-                <span class="text-accent">1-shot · 0 retry waste</span>
+                <span class="text-ink-primary font-semibold tracking-wider">DESIGN INTERSECTION</span>
+                <span class="text-ink-muted">AI-Native · Human-Auditable · Native Speed</span>
               </div>
 
-              <!-- Vector Closed-Loop Diagram -->
-              <div class="p-4 sm:p-6 bg-[#0B0B0D]">
+              <!-- Pure Flat Wireframe 3-Circle Venn SVG (Zero Gradients, Zero Glows) -->
+              <div class="px-4 py-3 sm:px-6 sm:py-4 bg-[#0B0B0D]">
                 <svg
-                  viewBox="0 0 640 380"
+                  viewBox="0 0 640 448"
                   fill="none"
                   xmlns="http://www.w3.org/2000/svg"
                   class="w-full h-auto block"
                   role="img"
-                  aria-label="Pa AI-Native Execution Loop: Prompt and Skill, JSON Repair, Human Audit, and Native .so"
+                  aria-label="Pa 3-Circle Venn Diagram: AI-Native, Human-Auditable, and Native Speed converging at Pa"
                 >
-                  <defs>
-                    <radialGradient id="loop-glow" cx="50%" cy="50%" r="50%">
-                      <stop offset="0%" stop-color="#C4B5FD" stop-opacity="0.11" />
-                      <stop offset="65%" stop-color="#C4B5FD" stop-opacity="0.03" />
-                      <stop offset="100%" stop-color="#C4B5FD" stop-opacity="0" />
-                    </radialGradient>
-                    <marker id="chev-accent" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto">
-                      <path d="M 1.5 1.2 L 5.8 4 L 1.5 6.8" fill="none" stroke="#C4B5FD" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
-                    </marker>
-                    <marker id="chev-teal" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto">
-                      <path d="M 1.5 1.2 L 5.8 4 L 1.5 6.8" fill="none" stroke="#5EEAD4" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
-                    </marker>
-                  </defs>
+                  <!-- Three Intersecting Circles: 1px solid stroke, flat subtle fill -->
+                  <circle cx="247" cy="182" r="126" fill="rgba(255,255,255,0.02)" stroke="#C4B5FD" stroke-width="1" />
+                  <circle cx="393" cy="182" r="126" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.16)" stroke-width="1" />
+                  <circle cx="320" cy="308" r="126" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.16)" stroke-width="1" />
 
-                  <!-- Subtle Ambient Center Glow & Typographic Watermark (No Box) -->
-                  <circle cx="320" cy="190" r="96" fill="url(#loop-glow)" />
-                  <text x="320" y="186" text-anchor="middle" fill="#E4E4E7" fill-opacity="0.72" font-family="JetBrains Mono, monospace" font-size="11.5" font-weight="600" letter-spacing="3">1-SHOT LOOP</text>
-                  <text x="320" y="204" text-anchor="middle" fill="#71717A" font-family="JetBrains Mono, monospace" font-size="9" letter-spacing="2">0 RETRY WASTE</text>
+                  <!-- Top-Left Circle Label: AI-Native -->
+                  <text x="195" y="156" text-anchor="middle" fill="#FAFAFA" font-family="Inter, sans-serif" font-size="13.5" font-weight="600" letter-spacing="-0.01em">AI-Native</text>
+                  <text x="195" y="175" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="9.5">pa-coder · 1-shot JSON</text>
 
-                  <!-- Fine 1.2px Clockwise Orbital Tracks + Terminal Dots -->
-                  <path d="M 418 52 Q 528 52 528 155" stroke="#C4B5FD" stroke-opacity="0.7" stroke-width="1.2" marker-end="url(#chev-accent)" />
-                  <circle cx="418" cy="52" r="2.2" fill="#C4B5FD" fill-opacity="0.85" />
+                  <!-- Top-Right Circle Label: Human-Auditable -->
+                  <text x="445" y="156" text-anchor="middle" fill="#FAFAFA" font-family="Inter, sans-serif" font-size="13.5" font-weight="600" letter-spacing="-0.01em">Human-Auditable</text>
+                  <text x="445" y="175" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="9.5">ast.parse · flat RAII</text>
 
-                  <path d="M 528 222 Q 528 328 421 328" stroke="#C4B5FD" stroke-opacity="0.45" stroke-width="1.2" stroke-dasharray="3 4" marker-end="url(#chev-accent)" />
-                  <circle cx="528" cy="222" r="2.2" fill="#C4B5FD" fill-opacity="0.7" />
+                  <!-- Bottom Circle Label: Native Speed -->
+                  <text x="320" y="356" text-anchor="middle" fill="#FAFAFA" font-family="Inter, sans-serif" font-size="13.5" font-weight="600" letter-spacing="-0.01em">Native Speed</text>
+                  <text x="320" y="375" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="9.5">LLVM -O2 · direct .so</text>
 
-                  <path d="M 222 328 Q 112 328 112 225" stroke="#5EEAD4" stroke-opacity="0.45" stroke-width="1.2" stroke-dasharray="3 4" marker-end="url(#chev-teal)" />
-                  <circle cx="222" cy="328" r="2.2" fill="#5EEAD4" fill-opacity="0.7" />
+                  <!-- Pairwise Intersection Labels (10px muted plain text) -->
+                  <text x="320" y="136" text-anchor="middle" fill="#71717A" font-family="JetBrains Mono, monospace" font-size="10">0-to-1 build</text>
+                  <text x="250" y="266" text-anchor="middle" fill="#71717A" font-family="JetBrains Mono, monospace" font-size="10">zero-copy</text>
+                  <text x="390" y="266" text-anchor="middle" fill="#71717A" font-family="JetBrains Mono, monospace" font-size="10">zero-GC</text>
 
-                  <path d="M 112 158 Q 112 52 219 52" stroke="#5EEAD4" stroke-opacity="0.7" stroke-width="1.2" marker-end="url(#chev-teal)" />
-                  <circle cx="112" cy="158" r="2.2" fill="#5EEAD4" fill-opacity="0.85" />
-
-                  <!-- Node 01: Top (188x56) -->
-                  <rect x="226" y="24" width="188" height="56" rx="6" fill="#111113" stroke="rgba(255,255,255,0.10)" stroke-width="1" />
-                  <text x="320" y="47" text-anchor="middle" fill="#FAFAFA" font-family="JetBrains Mono, monospace" font-size="11.5" font-weight="600">01 · Prompt + Skill</text>
-                  <text x="320" y="65" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="10">pa-coder</text>
-
-                  <!-- Node 02: Right (188x56, Purple Highlight) -->
-                  <rect x="434" y="162" width="188" height="56" rx="6" fill="#111113" stroke="#C4B5FD" stroke-width="1.25" />
-                  <text x="528" y="185" text-anchor="middle" fill="#C4B5FD" font-family="JetBrains Mono, monospace" font-size="11.5" font-weight="600">02 · JSON Repair</text>
-                  <text x="528" y="203" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="10">causal_chain + patch</text>
-
-                  <!-- Node 03: Bottom (188x56) -->
-                  <rect x="226" y="300" width="188" height="56" rx="6" fill="#111113" stroke="rgba(255,255,255,0.10)" stroke-width="1" />
-                  <text x="320" y="323" text-anchor="middle" fill="#FAFAFA" font-family="JetBrains Mono, monospace" font-size="11.5" font-weight="600">03 · Human Audit</text>
-                  <text x="320" y="341" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="10">zero-annotation · RAII</text>
-
-                  <!-- Node 04: Left (188x56, Teal Accent) -->
-                  <rect x="18" y="162" width="188" height="56" rx="6" fill="#111113" stroke="rgba(94,234,212,0.55)" stroke-width="1.15" />
-                  <text x="112" y="185" text-anchor="middle" fill="#5EEAD4" font-family="JetBrains Mono, monospace" font-size="11.5" font-weight="600">04 · Native .so</text>
-                  <text x="112" y="203" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="10">LLVM -O2 · direct import</text>
+                  <!-- Center Convergence: Pure Dark Circle + Pa.png Logo -->
+                  <circle cx="320" cy="224" r="32" fill="#09090B" stroke="rgba(255,255,255,0.18)" stroke-width="1" />
+                  <image href="Pa.png" x="300" y="204" width="40" height="40" preserveAspectRatio="xMidYMid meet" />
                 </svg>
               </div>
 

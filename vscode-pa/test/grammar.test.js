@@ -35,7 +35,14 @@ test('manifest registers pa and paw languages, grammars and colours', () => {
   assert.deepStrictEqual(pkg.contributes.languages.map((l) => l.id), ['pa', 'paw']);
   assert.deepStrictEqual(pkg.contributes.grammars.map((g) => g.scopeName), ['source.pa', 'source.paw']);
   const scopes = JSON.stringify(pkg.contributes.configurationDefaults['editor.tokenColorCustomizations']);
-  for (const s of ['support.function.intrinsic.pa', 'entity.name.function.decorator.pa', 'support.type.primitive.pa']) {
+  for (const s of [
+    'source.pa entity.name.function.python',
+    'source.pa meta.function-call.generic.python',
+    'source.paw entity.name.function.python',
+    'support.function.intrinsic.pa',
+    'entity.name.function.decorator.pa',
+    'support.type.primitive.pa',
+  ]) {
     assert.ok(scopes.includes(s), s);
   }
   for (const f of ['syntaxes/pa.tmLanguage.json', 'syntaxes/paw.tmLanguage.json', 'language-configuration.json']) {
