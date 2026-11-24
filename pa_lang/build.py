@@ -172,15 +172,16 @@ def _link_binary(kind: str, cc: str, objs: list[str], out: str, shared: bool,
     lib_file = pyinfo.get("lib_file", "")
     lib_name = pyinfo.get("lib_name", "")
     if sys.platform == "win32":
+        need_pylib = bool(paws or shared)
         if kind == "msvc":
             cmd = [cc, "/nologo", "/MD", *(["/LD"] if shared else []), *objs, f"/Fe:{out}", "/link"]
-            if paws:
+            if need_pylib:
                 if libdir:
                     cmd.append(f"/LIBPATH:{libdir}")
                 cmd.append(lib_file or f"{lib_name}.lib")
         elif kind == "clang":
             cmd = [cc, "-O2", *(["-shared"] if shared else []), *objs, "-o", out]
-            if paws:
+            if need_pylib:
                 if lib_file:
                     cmd.append(lib_file)
                 else:
@@ -189,7 +190,7 @@ def _link_binary(kind: str, cc: str, objs: list[str], out: str, shared: bool,
                     cmd.append(f"-l{lib_name}")
         else:  # mingw gcc
             cmd = [cc, "-O2", *(["-shared"] if shared else []), *objs, "-o", out, "-lm"]
-            if paws:
+            if need_pylib:
                 if libdir:
                     cmd.append(f"-L{libdir}")
                 cmd.append(f"-l{lib_name}")
@@ -205,6 +206,8 @@ def _link_binary(kind: str, cc: str, objs: list[str], out: str, shared: bool,
                 if libdir:
                     libs.append(f"-L{libdir}")
                 libs += [f"-l{lib_name}", *rpaths]
+        elif shared:
+            libs.append("-Wl,-undefined,dynamic_lookup")
         cmd = [cc, "-O2", *(["-dynamiclib"] if shared else []), *objs, "-o", out, *libs]
     else:
         libs = ["-lm"]
@@ -295,11 +298,10 @@ def compile_pa(path: str, out: Optional[str] = None, shared: bool = False, emit_
         with open(obj, "wb") as f:
             f.write(ir_to_object(ir_text, compiler_kind=kind))
         objs = [obj, build_core(tmp, mode, kind, cc)]
+        pyinfo = python_link_info() if (paws or shared) else {}
         if shared:
-            objs.append(build_wrappers(tmp, info, kind, cc))
-        pyinfo = {}
+            objs.append(build_wrappers(tmp, info, kind, cc, out_path=out, py_include=pyinfo.get("include", "")))
         if paws:
-            pyinfo = python_link_info()
             objs.append(build_bridge(tmp, mode, pyinfo["include"], kind, cc))
             objs.append(build_embed(tmp, info, python_home, python_path, relocatable, kind, cc))
         _link_binary(kind, cc, objs, out, shared, paws, relocatable, pyinfo)
@@ -326,8 +328,116 @@ def c_type(t) -> str:
     return "void *"
 
 
-def wrapper_source(info) -> str:
-    """C wrappers for @export functions: guard (setjmp) so a fault returns to the host instead of exit(70)."""
+def _pyext_mod_name(out_path: str) -> str:
+    import re
+    base = os.path.basename(out_path).split(".")[0] if out_path else ""
+    return base if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", base) else ""
+
+
+def _pyext_source(info, mod_name: str) -> list[str]:
+    """Generate CPython PyInit_<mod_name> wrapper methods so `import <mod_name>` works with zero ctypes."""
+    from .types import BOOL, F32, F64, I32, I64, STR_VIEW, U8, U32, U64, VOID, Span, resolve
+    scalars = (I32, I64, U8, U32, U64, F32, F64, BOOL)
+    supported_ret = (*scalars, VOID, STR_VIEW)
+
+    def param_ok(t) -> bool:
+        rt = resolve(t)
+        return rt in scalars or rt == STR_VIEW or (isinstance(rt, Span) and resolve(rt.elem) in scalars)
+
+    lines = [
+        "#define PY_SSIZE_T_CLEAN",
+        "#include <Python.h>",
+        "extern int32_t pa_error_code(void);",
+        "extern const char *pa_error_message(void);",
+        "extern void pa_error_clear(void);",
+    ]
+    methods = []
+    for name, fi in info.funcs.items():
+        if not fi.exported:
+            continue
+        ptypes = [resolve(t) for t in fi.params.values()]
+        rt = resolve(fi.ret)
+        if rt not in supported_ret or not all(param_ok(t) for t in ptypes):
+            continue
+        nargs = len(ptypes)
+        lines.append(f"static PyObject *pa_py_{name}(PyObject *self, PyObject *args) {{")
+        lines.append("    (void)self;")
+        if nargs == 0:
+            lines.append('    if (!PyArg_ParseTuple(args, "")) return NULL;')
+        else:
+            obj_vars = ", ".join(f"*o{i}" for i in range(nargs))
+            fmt = "O" * nargs
+            ptrs = ", ".join(f"&o{i}" for i in range(nargs))
+            lines.append(f"    PyObject {obj_vars};")
+            lines.append(f'    if (!PyArg_ParseTuple(args, "{fmt}", {ptrs})) return NULL;')
+        buf_indices = []
+        for i, pt in enumerate(ptypes):
+            if isinstance(pt, Span):
+                buf_indices.append(i)
+                lines.append(f"    Py_buffer v{i};")
+                lines.append(f"    int has_v{i} = 0;")
+        cleanup = " ".join(f"if (has_v{i}) PyBuffer_Release(&v{i});" for i in buf_indices)
+        fail = f"{{ {cleanup} return NULL; }}" if cleanup else "return NULL;"
+        for i, pt in enumerate(ptypes):
+            ct = c_type(pt)
+            if pt == BOOL:
+                lines.append(f"    int b{i} = PyObject_IsTrue(o{i}); if (b{i} < 0) {fail}")
+                lines.append(f"    _Bool a{i} = (b{i} != 0);")
+            elif pt == U64:
+                lines.append(f"    unsigned long long u{i} = PyLong_AsUnsignedLongLong(o{i}); if (PyErr_Occurred()) {fail}")
+                lines.append(f"    uint64_t a{i} = (uint64_t)u{i};")
+            elif pt in (I32, I64, U8, U32):
+                lines.append(f"    long long iv{i} = PyLong_AsLongLong(o{i}); if (PyErr_Occurred()) {fail}")
+                lines.append(f"    {ct} a{i} = ({ct})iv{i};")
+            elif pt in (F32, F64):
+                lines.append(f"    double fv{i} = PyFloat_AsDouble(o{i}); if (PyErr_Occurred()) {fail}")
+                lines.append(f"    {ct} a{i} = ({ct})fv{i};")
+            elif pt == STR_VIEW:
+                lines.append(f"    Py_ssize_t sl{i} = 0; const char *sp{i} = PyUnicode_AsUTF8AndSize(o{i}, &sl{i}); if (!sp{i}) {fail}")
+                lines.append(f"    pa_span a{i} = {{ (void *)sp{i}, (int64_t)sl{i} }};")
+            elif isinstance(pt, Span):
+                esize = resolve(pt.elem).size
+                lines.append(f"    if (PyObject_GetBuffer(o{i}, &v{i}, PyBUF_C_CONTIGUOUS) != 0) {fail}")
+                lines.append(f"    has_v{i} = 1;")
+                lines.append(f"    pa_span a{i} = {{ v{i}.buf, (int64_t)(v{i}.len / {esize}) }};")
+        call_args = ", ".join(f"a{i}" for i in range(nargs))
+        if rt == VOID:
+            lines.append(f"    {name}({call_args});")
+        else:
+            lines.append(f"    {c_type(rt)} r = {name}({call_args});")
+        if cleanup:
+            lines.append(f"    {cleanup}")
+        lines.append("    if (pa_error_code() != 0) {")
+        lines.append('        const char *m = pa_error_message();')
+        lines.append('        PyErr_SetString(PyExc_RuntimeError, (m && *m) ? m : "Pa runtime fault");')
+        lines.append("        pa_error_clear();")
+        lines.append("        return NULL;")
+        lines.append("    }")
+        if rt == VOID:
+            lines.append("    Py_RETURN_NONE;")
+        elif rt == BOOL:
+            lines.append("    return PyBool_FromLong(r != 0);")
+        elif rt == U64:
+            lines.append("    return PyLong_FromUnsignedLongLong((unsigned long long)r);")
+        elif rt in (I32, I64, U8, U32):
+            lines.append("    return PyLong_FromLongLong((long long)r);")
+        elif rt in (F32, F64):
+            lines.append("    return PyFloat_FromDouble((double)r);")
+        elif rt == STR_VIEW:
+            lines.append("    return PyUnicode_FromStringAndSize((const char *)r.p, (Py_ssize_t)r.n);")
+        lines.append("}")
+        methods.append(f'    {{"{name}", pa_py_{name}, METH_VARARGS, NULL}},')
+    lines.append("static PyMethodDef _pa_py_methods[] = {")
+    lines.extend(methods)
+    lines.append("    {NULL, NULL, 0, NULL}")
+    lines.append("};")
+    lines.append(f'static struct PyModuleDef _pa_py_module = {{ PyModuleDef_HEAD_INIT, "{mod_name}", NULL, -1, _pa_py_methods }};')
+    lines.append(f"PyMODINIT_FUNC PyInit_{mod_name}(void) {{ return PyModule_Create(&_pa_py_module); }}")
+    return lines
+
+
+def wrapper_source(info, py_mod_name: str = "") -> str:
+    """C wrappers for @export functions: guard (setjmp) + optional CPython PyInit_<mod> for direct `import`."""
     out = [
         "#include <setjmp.h>",
         "#include <stdint.h>",
@@ -378,17 +488,21 @@ def wrapper_source(info) -> str:
                 "    return r;",
             ]
         out += body + ["}"]
+    if py_mod_name:
+        out += _pyext_source(info, py_mod_name)
     return "\n".join(out) + "\n"
 
 
-def build_wrappers(tmp: str, info, kind: str = "", cc: str = "") -> str:
+def build_wrappers(tmp: str, info, kind: str = "", cc: str = "", out_path: str = "", py_include: str = "") -> str:
     if not cc:
         kind, cc = find_c_compiler()
     ext = ".obj" if sys.platform == "win32" else ".o"
     src, obj = os.path.join(tmp, "pa_wrappers.c"), os.path.join(tmp, f"pa_wrappers{ext}")
+    has_py_h = bool(py_include and os.path.isfile(os.path.join(py_include, "Python.h")))
+    py_mod_name = _pyext_mod_name(out_path) if has_py_h else ""
     with open(src, "w", encoding="utf-8") as f:
-        f.write(wrapper_source(info))
-    _compile_c(kind, cc, src, obj)
+        f.write(wrapper_source(info, py_mod_name=py_mod_name))
+    _compile_c(kind, cc, src, obj, includes=[py_include] if py_mod_name else ())
     return obj
 
 

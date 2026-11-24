@@ -103,3 +103,28 @@ def test_repackaged_helper_shared_library_via_ctypes(tmp_path):
     got_dot = lib.native_dot_scale(PaSpan(ctypes.addressof(arr), 4), 2.0)
     assert lib.pa_error_code() == 0
     assert abs(got_dot - 24.0) < 1e-12
+
+
+def test_direct_python_import_of_shared_module_zero_ctypes(tmp_path, monkeypatch):
+    import array
+    import importlib
+
+    pyext = ".pyd" if sys.platform == "win32" else ".so"
+    mod_name = "pa_kernel_direct"
+    so_path = compile_pa(
+        str(FIXTURE_DIR / "helper.pa"),
+        out=str(tmp_path / f"{mod_name}{pyext}"),
+        shared=True,
+    )
+    assert os.path.isfile(so_path)
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+    importlib.invalidate_caches()
+    mod = importlib.import_module(mod_name)
+
+    got_sum = mod.native_batch_checksum(2000, 13, 1)
+    exp_sum = sum(((i * 17 + 13) % 997) * 0.125 + 0.5 for i in range(2000))
+    assert abs(got_sum - exp_sum) < 1e-6
+
+    buf = array.array("d", [1.5, 2.5, 3.5, 4.5])
+    assert abs(mod.native_dot_scale(buf, 2.0) - 24.0) < 1e-12
