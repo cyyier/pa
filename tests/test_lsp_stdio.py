@@ -77,7 +77,7 @@ def test_lsp_roundtrip(tmp_path):
     try:
         init = c.request("initialize", {"processId": None, "rootUri": tmp_path.as_uri(), "capabilities": {}})
         caps = init["result"]["capabilities"]
-        assert caps.get("inlayHintProvider") and caps.get("hoverProvider")
+        assert caps.get("inlayHintProvider") and caps.get("hoverProvider") and caps.get("definitionProvider")
         c.notify("initialized", {})
         c.notify("textDocument/didOpen", {"textDocument": {"uri": uri, "languageId": "pa", "version": 1, "text": SRC}})
 
@@ -95,6 +95,17 @@ def test_lsp_roundtrip(tmp_path):
         hover = c.request("textDocument/hover", {"textDocument": {"uri": uri},
                                                  "position": {"line": 3, "character": 5}})["result"]
         assert "128 B" in hover["contents"]["value"] and "[16 x double]" in hover["contents"]["value"]
+
+        # Go to Definition: cross-file .paw function (`np_ops.sum_array` on line 4)
+        defn = c.request("textDocument/definition", {"textDocument": {"uri": uri},
+                                                     "position": {"line": 4, "character": 17}})["result"]
+        assert defn["uri"] == (tmp_path / "np_ops.paw").as_uri()
+        assert defn["range"]["start"] == {"line": 0, "character": 4}
+
+        # Go to Definition: builtin `range` on line 6 -> null
+        null_defn = c.request("textDocument/definition", {"textDocument": {"uri": uri},
+                                                          "position": {"line": 6, "character": 15}})["result"]
+        assert null_defn is None
 
         bad = "import requests\n\ndef main():\n    return 0\n"
         c.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": 2},

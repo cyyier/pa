@@ -1,4 +1,4 @@
-"""pac lsp: diagnostics, Inlay Hints (inferred types / memory strategy / .paw FFI) and memory-audit Hover."""
+"""pac lsp: diagnostics, Inlay Hints (inferred types / memory strategy / .paw FFI), Hover, and Go to Definition."""
 from __future__ import annotations
 
 import ast
@@ -7,13 +7,15 @@ import re
 import sys
 import threading
 import time
+from pathlib import Path
 from typing import Optional
 from urllib.parse import unquote, urlparse
 from urllib.request import url2pathname
 
 from .diagnostics import DiagnosticSink
 from .infer import FuncInfo, ModuleInfo, analyze
-from .modules import link_modules
+from .modules import find_pa, link_modules
+from .paw import find_paw
 from .types import FixedList, Scalar, StackVec, StructT, Vec, display, resolve, simple_display
 from .validator import check_source, complexity, default_search_dirs
 
@@ -31,6 +33,157 @@ def uri_to_path(uri: str) -> str:
     return url2pathname(raw)
 
 
+def path_to_uri(path: str) -> str:
+    return Path(os.path.abspath(path)).as_uri()
+
+
+def _name_span(lines: list[str], lineno: int, kw: str, name: str, fallback_col: int) -> tuple[int, int, int, int]:
+    line0 = max(0, lineno - 1)
+    text = lines[line0] if line0 < len(lines) else ""
+    m = re.search(rf"\b{kw}\s+({re.escape(name)})\b", text)
+    if m:
+        return line0, m.start(1), line0, m.end(1)
+    return line0, fallback_col, line0, fallback_col + len(name)
+
+
+def _index_module_defs(tree: ast.Module, path: str, lines: list[str]) -> dict[str, tuple[str, int, int, int, int]]:
+    """Map top-level function, @struct class, and global variable/constant names to (path, l0, c0, l1, c1)."""
+    defs: dict[str, tuple[str, int, int, int, int]] = {}
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            l0, c0, l1, c1 = _name_span(lines, node.lineno, "def", node.name, node.col_offset)
+            defs.setdefault(node.name, (path, l0, c0, l1, c1))
+        elif isinstance(node, ast.ClassDef):
+            l0, c0, l1, c1 = _name_span(lines, node.lineno, "class", node.name, node.col_offset)
+            defs.setdefault(node.name, (path, l0, c0, l1, c1))
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                for sub in ast.walk(target):
+                    if isinstance(sub, ast.Name):
+                        defs.setdefault(
+                            sub.id,
+                            (path, sub.lineno - 1, sub.col_offset,
+                             (sub.end_lineno or sub.lineno) - 1,
+                             sub.end_col_offset if sub.end_col_offset is not None else sub.col_offset + len(sub.id)),
+                        )
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            t = node.target
+            defs.setdefault(
+                t.id,
+                (path, t.lineno - 1, t.col_offset,
+                 (t.end_lineno or t.lineno) - 1,
+                 t.end_col_offset if t.end_col_offset is not None else t.col_offset + len(t.id)),
+            )
+    return defs
+
+
+def _index_struct_fields(tree: ast.Module, class_name: str, path: str) -> dict[str, tuple[str, int, int, int, int]]:
+    fields: dict[str, tuple[str, int, int, int, int]] = {}
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            for stmt in node.body:
+                if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+                    t = stmt.target
+                    fields.setdefault(
+                        t.id,
+                        (path, t.lineno - 1, t.col_offset,
+                         (t.end_lineno or t.lineno) - 1,
+                         t.end_col_offset if t.end_col_offset is not None else t.col_offset + len(t.id)),
+                    )
+    return fields
+
+
+def _index_func_locals(fn: ast.FunctionDef, path: str) -> dict[str, tuple[str, int, int, int, int]]:
+    locs: dict[str, tuple[str, int, int, int, int]] = {}
+    all_args = list(fn.args.posonlyargs) + list(fn.args.args) + list(fn.args.kwonlyargs)
+    if fn.args.vararg:
+        all_args.append(fn.args.vararg)
+    if fn.args.kwarg:
+        all_args.append(fn.args.kwarg)
+    for arg in all_args:
+        l0 = arg.lineno - 1
+        c0 = arg.col_offset
+        locs.setdefault(arg.arg, (path, l0, c0, l0, c0 + len(arg.arg)))
+
+    def _visit(stmts):
+        for stmt in stmts:
+            if isinstance(stmt, ast.Assign):
+                for target in stmt.targets:
+                    for sub in ast.walk(target):
+                        if isinstance(sub, ast.Name):
+                            locs.setdefault(
+                                sub.id,
+                                (path, sub.lineno - 1, sub.col_offset,
+                                 (sub.end_lineno or sub.lineno) - 1,
+                                 sub.end_col_offset if sub.end_col_offset is not None else sub.col_offset + len(sub.id)),
+                            )
+            elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+                t = stmt.target
+                locs.setdefault(
+                    t.id,
+                    (path, t.lineno - 1, t.col_offset,
+                     (t.end_lineno or t.lineno) - 1,
+                     t.end_col_offset if t.end_col_offset is not None else t.col_offset + len(t.id)),
+                )
+            elif isinstance(stmt, ast.For):
+                for sub in ast.walk(stmt.target):
+                    if isinstance(sub, ast.Name):
+                        locs.setdefault(
+                            sub.id,
+                            (path, sub.lineno - 1, sub.col_offset,
+                             (sub.end_lineno or sub.lineno) - 1,
+                             sub.end_col_offset if sub.end_col_offset is not None else sub.col_offset + len(sub.id)),
+                        )
+                _visit(stmt.body)
+                _visit(stmt.orelse)
+            elif isinstance(stmt, (ast.If, ast.While)):
+                _visit(stmt.body)
+                _visit(stmt.orelse)
+
+    _visit(fn.body)
+    return locs
+
+
+def _resolve_module_path(mod_name: str, search_dirs: list[str], level: int = 0) -> Optional[str]:
+    p = find_pa(mod_name, search_dirs, level=level)
+    if p:
+        return p
+    if level == 0 and mod_name and "." not in mod_name:
+        return find_paw(mod_name, search_dirs)
+    return None
+
+
+def _parse_and_index_file(file_path: str) -> tuple[Optional[ast.Module], dict[str, tuple[str, int, int, int, int]]]:
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            src = f.read()
+        tree = ast.parse(src, file_path)
+    except (OSError, SyntaxError):
+        return None, {}
+    return tree, _index_module_defs(tree, file_path, src.splitlines())
+
+
+def _is_in_comment(line: str, col: int) -> bool:
+    in_quote: Optional[str] = None
+    i = 0
+    limit = min(col, len(line))
+    while i < limit:
+        ch = line[i]
+        if in_quote:
+            if ch == "\\" and i + 1 < limit:
+                i += 2
+                continue
+            if ch == in_quote:
+                in_quote = None
+        else:
+            if ch in ("'", '"'):
+                in_quote = ch
+            elif ch == "#":
+                return True
+        i += 1
+    return False
+
+
 class DocAnalysis:
     """Everything the LSP needs for one document version (pure Python, unit-testable)."""
 
@@ -41,15 +194,15 @@ class DocAnalysis:
         self.diags = check_source(source, path)
         self.info: Optional[ModuleInfo] = None
         self.tree = None
-        if path.endswith(".paw"):
-            return
+        self.search_dirs = default_search_dirs(path)
         try:
             self.tree = ast.parse(source, path)
         except SyntaxError:
             return
-        dirs = default_search_dirs(path)
-        linked_tree, _, paw_paths = link_modules(self.tree, path, dirs)
-        self.info = analyze(linked_tree, DiagnosticSink(source, path), source, path, dirs, paw_paths=paw_paths)
+        if path.endswith(".paw"):
+            return
+        linked_tree, _, paw_paths = link_modules(self.tree, path, self.search_dirs)
+        self.info = analyze(linked_tree, DiagnosticSink(source, path), source, path, self.search_dirs, paw_paths=paw_paths)
 
     # ---- inlay hints: list of (line0, col0, label) --------------------
     def hints(self) -> list:
@@ -140,6 +293,141 @@ class DocAnalysis:
         rows.append(f"- function `{fi.name}`: cyclomatic complexity **{complexity(fi.node)}**")
         return "\n".join(rows)
 
+    # ---- go to definition ---------------------------------------------
+    def _collect_imports(self) -> tuple[dict[str, str], dict[str, tuple[str, Optional[str]]]]:
+        """Return (imported_modules, imported_symbols) for the current AST."""
+        imported_modules: dict[str, str] = {}
+        imported_symbols: dict[str, tuple[str, Optional[str]]] = {}
+        if not self.tree:
+            return imported_modules, imported_symbols
+        for stmt in self.tree.body:
+            if isinstance(stmt, ast.Import):
+                for alias in stmt.names:
+                    target = _resolve_module_path(alias.name, self.search_dirs)
+                    if target:
+                        local = alias.asname or alias.name
+                        imported_modules[local] = target
+                        if not alias.asname and "." in alias.name:
+                            root = alias.name.split(".", 1)[0]
+                            root_path = _resolve_module_path(root, self.search_dirs)
+                            if root_path:
+                                imported_modules.setdefault(root, root_path)
+            elif isinstance(stmt, ast.ImportFrom):
+                mod_name = stmt.module or ""
+                mod_path = _resolve_module_path(mod_name, self.search_dirs, level=stmt.level)
+                for alias in stmt.names:
+                    if alias.name == "*":
+                        continue
+                    local = alias.asname or alias.name
+                    sub_name = f"{mod_name}.{alias.name}" if mod_name else alias.name
+                    sub_path = _resolve_module_path(sub_name, self.search_dirs, level=stmt.level)
+                    if mod_path:
+                        _, mod_defs = _parse_and_index_file(mod_path)
+                        if alias.name in mod_defs or not sub_path:
+                            imported_symbols[local] = (mod_path, alias.name)
+                            continue
+                    if sub_path:
+                        imported_modules[local] = sub_path
+                        imported_symbols[local] = (sub_path, None)
+        return imported_modules, imported_symbols
+
+    def _enclosing_func_node(self, line1: int) -> Optional[ast.FunctionDef]:
+        if not self.tree:
+            return None
+        for node in self.tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                end = node.end_lineno or node.lineno
+                if node.lineno <= line1 <= end:
+                    return node
+        return None
+
+    def definition(self, line0: int, col0: int) -> Optional[tuple[str, int, int, int, int]]:
+        """Resolve symbol under cursor to (file_path, start_line0, start_col0, end_line0, end_col0) or None."""
+        if not self.tree or line0 < 0 or line0 >= len(self.lines):
+            return None
+        line_text = self.lines[line0]
+        match = None
+        for m in re.finditer(r"[A-Za-z_]\w*", line_text):
+            if m.start() <= col0 <= m.end():
+                match = m
+                break
+        if match is None or _is_in_comment(line_text, match.start()):
+            return None
+
+        word = match.group(0)
+        prefix_m = re.search(r"([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\.\s*$", line_text[:match.start()])
+        prefix = prefix_m.group(1) if prefix_m else None
+
+        imported_modules, imported_symbols = self._collect_imports()
+
+        # 1. Cursor on an `import` / `from ... import ...` statement line
+        line1 = line0 + 1
+        for stmt in self.tree.body:
+            if isinstance(stmt, ast.Import) and stmt.lineno <= line1 <= (stmt.end_lineno or stmt.lineno):
+                for alias in stmt.names:
+                    if word == alias.asname or word == alias.name or word in alias.name.split("."):
+                        target = _resolve_module_path(alias.name, self.search_dirs)
+                        if target:
+                            return (target, 0, 0, 0, 0)
+                return None
+            if isinstance(stmt, ast.ImportFrom) and stmt.lineno <= line1 <= (stmt.end_lineno or stmt.lineno):
+                imp_m = re.search(r"\bimport\b", line_text)
+                if imp_m and match.start() < imp_m.start():
+                    target = _resolve_module_path(stmt.module or "", self.search_dirs, level=stmt.level)
+                    return (target, 0, 0, 0, 0) if target else None
+                for alias in stmt.names:
+                    local = alias.asname or alias.name
+                    if word in (alias.name, local):
+                        entry = imported_symbols.get(local)
+                        if entry:
+                            target_path, orig_sym = entry
+                            if orig_sym is None:
+                                return (target_path, 0, 0, 0, 0)
+                            _, tdefs = _parse_and_index_file(target_path)
+                            return tdefs.get(orig_sym, (target_path, 0, 0, 0, 0))
+                return None
+
+        # 2. Dotted attribute access: `mod.func` / `mod.Struct` / `mod.CONST` / `struct_var.field`
+        if prefix is not None:
+            if prefix in imported_modules:
+                target_path = imported_modules[prefix]
+                _, tdefs = _parse_and_index_file(target_path)
+                return tdefs.get(word)
+            fi = self.func_at(line1)
+            if fi and "." not in prefix and prefix in fi.locals:
+                t = resolve(fi.locals[prefix].type)
+                if isinstance(t, StructT):
+                    fields = _index_struct_fields(self.tree, t.name, self.path)
+                    if word in fields:
+                        return fields[word]
+            return None
+
+        # 3. Module alias reference (e.g. clicking `data_fetcher` in `data_fetcher.fetch_series(...)`)
+        if word in imported_modules:
+            return (imported_modules[word], 0, 0, 0, 0)
+
+        # 4. Symbol imported via `from mod import sym [as alias]`
+        if word in imported_symbols:
+            target_path, orig_sym = imported_symbols[word]
+            if orig_sym is None:
+                return (target_path, 0, 0, 0, 0)
+            _, tdefs = _parse_and_index_file(target_path)
+            return tdefs.get(orig_sym, (target_path, 0, 0, 0, 0))
+
+        # 5. Enclosing function parameter or local variable
+        fn_node = self._enclosing_func_node(line1)
+        if fn_node is not None:
+            fn_locals = _index_func_locals(fn_node, self.path)
+            if word in fn_locals:
+                return fn_locals[word]
+
+        # 6. Top-level module definitions (functions, @struct classes, constants/globals)
+        mod_defs = _index_module_defs(self.tree, self.path, self.lines)
+        if word in mod_defs:
+            return mod_defs[word]
+
+        return None
+
 
 # ---------------------------------------------------------------------------
 def build_server():
@@ -193,6 +481,17 @@ def build_server():
         if not md:
             return None
         return types.Hover(contents=types.MarkupContent(kind=types.MarkupKind.Markdown, value=md))
+
+    @server.feature(types.TEXT_DOCUMENT_DEFINITION)
+    def definition(params: types.DefinitionParams):
+        loc = analysis(params.text_document.uri).definition(params.position.line, params.position.character)
+        if not loc:
+            return None
+        path, l0, c0, l1, c1 = loc
+        return types.Location(
+            uri=path_to_uri(path),
+            range=types.Range(types.Position(l0, c0), types.Position(l1, c1)),
+        )
 
     return server
 
