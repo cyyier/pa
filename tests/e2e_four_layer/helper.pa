@@ -1,0 +1,53 @@
+"""Layer 1B (helper.pa): high-frequency native compute + multi-crossing SQLite/zlib bridge.
+
+Also exports pure C-ABI functions (`@export`) so this exact file can be repackaged as
+a standalone shared library (`libpa_repackaged.so/.dylib/.dll`) callable via Python ctypes.
+"""
+import bridge
+
+
+def compute_batch(n, seed, batch_tag) -> Vec[float]:
+    out = [0.0] * n
+    bias = float(batch_tag) * 0.5
+    for i in range(n):
+        v = ((i * 17 + seed) % 997) * 0.125 + bias
+        out[i] = v
+    return out
+
+
+def sum_vec(xs) -> float:
+    acc = 0.0
+    for i in range(len(xs)):
+        acc = acc + xs[i]
+    return acc
+
+
+def run_four_layer_pipeline(n) -> int:
+    bridge.reset_session()
+    b1 = compute_batch(n=n, seed=13, batch_tag=1)
+    b2 = compute_batch(n=n, seed=29, batch_tag=2)
+    c1 = bridge.ingest_batch(1, b1)
+    c2 = bridge.ingest_batch(2, b2)
+    s1 = bridge.query_batch_sum(1)
+    s2 = bridge.query_batch_sum(2)
+    top = bridge.query_top_values(8)
+    top_sum = sum_vec(top)
+    rows = bridge.total_row_count()
+    crc = bridge.current_crc32()
+    ok = bridge.verify_against_python_ref(n, s1 + s2, top_sum, crc)
+    print(rows, c1 + c2, s1 + s2, top_sum, crc, ok)
+    return ok
+
+
+@export
+def native_batch_checksum(n: int, seed: int, batch_tag: int) -> float:
+    batch = compute_batch(n=n, seed=seed, batch_tag=batch_tag)
+    return sum_vec(batch)
+
+
+@export
+def native_dot_scale(xs: span[float], k: float) -> float:
+    acc = 0.0
+    for i in range(len(xs)):
+        acc = acc + xs[i] * k
+    return acc

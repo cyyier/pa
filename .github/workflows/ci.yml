@@ -36,8 +36,10 @@ jobs:
           pac doctor
       - name: Tests
         run: pytest -q
+      - name: Four-layer E2E integration test (libsqlite3 & libz)
+        run: pytest -v tests/test_e2e_four_layer.py
       - name: Examples type-check
-        run: pac check examples
+        run: pac check examples tests/e2e_four_layer
 
   vscode-extension:
     runs-on: ubuntu-latest

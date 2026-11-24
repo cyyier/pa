@@ -1,0 +1,30 @@
+"""Layer 2 (.paw Bridge): locked static In -> Out signatures calling py_adapter.py."""
+import py_adapter
+
+
+def reset_session() -> int:
+    return py_adapter.reset_session()
+
+
+def ingest_batch(batch_id: int, values: span[float]) -> int:
+    return py_adapter.ingest_batch(batch_id, values)
+
+
+def query_batch_sum(batch_id: int) -> float:
+    return py_adapter.query_batch_sum(batch_id)
+
+
+def query_top_values(limit_n: int) -> Vec[float]:
+    return py_adapter.query_top_values(limit_n)
+
+
+def total_row_count() -> int:
+    return py_adapter.total_row_count()
+
+
+def current_crc32() -> int:
+    return py_adapter.current_crc32()
+
+
+def verify_against_python_ref(n: int, pa_total_sum: float, pa_top_sum: float, pa_crc: int) -> int:
+    return py_adapter.verify_against_python_ref(n, pa_total_sum, pa_top_sum, pa_crc)
