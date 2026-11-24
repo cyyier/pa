@@ -86,8 +86,8 @@
 <body class="bg-canvas text-ink-primary selection:bg-accent selection:text-canvas">
 
   <!-- 1. MINIMAL NAVBAR -->
-  <header class="sticky top-0 z-50 h-14 bg-canvas border-b hairline">
-    <div class="max-w-6xl mx-auto h-full px-6 flex items-center justify-between">
+  <header class="sticky top-0 z-50 bg-canvas border-b hairline">
+    <div class="max-w-6xl mx-auto h-14 px-6 flex items-center justify-between">
       <div class="flex items-center gap-3">
         <a
           href="index.html"
@@ -104,7 +104,7 @@
         </span>
       </div>
 
-      <nav class="flex items-center gap-6 text-xs font-medium text-ink-secondary">
+      <nav class="hidden sm:flex items-center gap-6 text-xs font-medium text-ink-secondary">
         <a href="quickstart.html" class="text-ink-primary">
           Quickstart
         </a>
@@ -124,7 +124,41 @@
           <span>GitHub</span>
         </a>
       </nav>
+
+      <button
+        id="mobile-menu-btn"
+        type="button"
+        aria-label="Toggle navigation"
+        aria-expanded="false"
+        aria-controls="mobile-menu"
+        class="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-md border hairline bg-surface text-ink-secondary hover:text-ink-primary transition-colors"
+      >
+        <svg id="menu-icon-open" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="4" y1="7" x2="20" y2="7" />
+          <line x1="4" y1="12" x2="20" y2="12" />
+          <line x1="4" y1="17" x2="20" y2="17" />
+        </svg>
+        <svg id="menu-icon-close" class="w-4 h-4 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="6" y1="6" x2="18" y2="18" />
+          <line x1="18" y1="6" x2="6" y2="18" />
+        </svg>
+      </button>
     </div>
+
+    <nav id="mobile-menu" aria-label="Mobile navigation" class="hidden sm:hidden border-t hairline bg-canvas px-6 py-3 space-y-1 text-sm font-medium text-ink-secondary">
+      <a href="quickstart.html" class="block py-2 text-ink-primary">Quickstart</a>
+      <a href="architecture.html" class="block py-2 hover:text-ink-primary transition-colors">Architecture</a>
+      <a href="index.html#benchmarks" class="block py-2 hover:text-ink-primary transition-colors">Benchmarks</a>
+      <a
+        href="https://github.com/cyyier/pa"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="flex items-center gap-1.5 py-2 hover:text-ink-primary transition-colors"
+      >
+        <i data-lucide="star" class="w-3.5 h-3.5 text-ink-muted"></i>
+        <span>GitHub</span>
+      </a>
+    </nav>
   </header>
 
   <!-- 2. DOCS LAYOUT -->
@@ -680,6 +714,23 @@
       { rootMargin: '-15% 0px -70% 0px' }
     );
     sections.forEach((s) => observer.observe(s));
+
+    // Mobile navbar menu toggle
+    const mobileBtn = document.getElementById('mobile-menu-btn');
+    const mobileMenu = document.getElementById('mobile-menu');
+    const iconOpen = document.getElementById('menu-icon-open');
+    const iconClose = document.getElementById('menu-icon-close');
+    if (mobileBtn && mobileMenu) {
+      const setMenu = (open) => {
+        mobileMenu.classList.toggle('hidden', !open);
+        iconOpen.classList.toggle('hidden', open);
+        iconClose.classList.toggle('hidden', !open);
+        mobileBtn.setAttribute('aria-expanded', String(open));
+      };
+      mobileBtn.addEventListener('click', () => setMenu(mobileMenu.classList.contains('hidden')));
+      mobileMenu.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => setMenu(false)));
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+    }
   </script>
 </body>
 </html>
