@@ -473,13 +473,86 @@
             <span class="font-mono text-xs text-accent tabular-nums">07</span>
             <h2 class="text-xl font-semibold tracking-tight text-ink-primary">The <code class="font-mono text-accent">.paw</code> boundary</h2>
           </div>
+
+          <!-- At-a-glance Data Flow Table -->
+          <div class="bg-surface border hairline rounded-md overflow-hidden overflow-x-auto">
+            <table class="spec-table">
+              <thead>
+                <tr><th>Direction</th><th>Pa Type</th><th>Python Side</th><th>Copy &amp; Ownership</th><th>Boundary Customs</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="font-mono text-accent">In (.pa &rarr; .paw)</td>
+                  <td class="font-mono">int, uint, float, bool<br /><span class="text-ink-muted">int32, uint8, uint32, float32</span></td>
+                  <td class="font-mono">int / float / bool</td>
+                  <td>Boxed value copy</td>
+                  <td>Rejects <code class="ic">NaN</code>/<code class="ic">Inf</code> (unless <code class="ic">@allow_nan</code>); narrow int <code class="ic">OverflowError</code> guard</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-accent">In (.pa &rarr; .paw)</td>
+                  <td class="font-mono">str_view / String</td>
+                  <td class="font-mono">str</td>
+                  <td>Strict UTF-8 decode copy</td>
+                  <td><code class="ic">len &ge; 0</code>, non-NULL pointer, strict UTF-8</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-accent">In (.pa &rarr; .paw)</td>
+                  <td class="font-mono">span[T], Vec[T], list[T, N]</td>
+                  <td class="font-mono">read-only memoryview</td>
+                  <td><strong class="text-ink-primary">Zero-copy</strong> (borrows Pa memory)</td>
+                  <td><code class="ic">len &ge; 0</code>, non-NULL; <strong class="text-ink-primary">dev</strong>: element-wise <code class="ic">NaN</code>/<code class="ic">Inf</code> scan on floats</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-[#5EEAD4]">Out (.paw &rarr; .pa)</td>
+                  <td class="font-mono">void</td>
+                  <td class="font-mono">None</td>
+                  <td>&mdash;</td>
+                  <td>Must return <code class="ic">None</code> (any other object faults)</td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-[#5EEAD4]">Out (.paw &rarr; .pa)</td>
+                  <td class="font-mono">int, uint, float, bool<br /><span class="text-ink-muted">int32, uint8, uint32, float32</span></td>
+                  <td class="font-mono">int / float / bool / np.bool_</td>
+                  <td>Unboxed value copy</td>
+                  <td>Rejects <code class="ic">None</code>, type drift (<code class="ic">bool</code> &ne; <code class="ic">int</code> &ne; <code class="ic">float</code>), width overflow, <code class="ic">NaN</code>/<code class="ic">Inf</code></td>
+                </tr>
+                <tr>
+                  <td class="font-mono text-[#5EEAD4]">Out (.paw &rarr; .pa)</td>
+                  <td class="font-mono">Vec[T]<br /><span class="text-ink-muted">(text via Vec[uint8])</span></td>
+                  <td class="font-mono">ndarray / array / bytes / list</td>
+                  <td><strong class="text-ink-primary">RAII-owned copy</strong> (<code class="ic">malloc</code> + <code class="ic">memcpy</code>)</td>
+                  <td>Buffer format &amp; <code class="ic">itemsize</code> check (or sequence element checks); <strong class="text-ink-primary">dev</strong>: float <code class="ic">NaN</code>/<code class="ic">Inf</code> scan</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
           <p class="text-sm leading-relaxed text-ink-secondary">
             When <code class="ic">infer.py</code> sees <code class="ic">import x</code> and <code class="ic">x.paw</code> exists, it reads only the public function signatures as a static header. At codegen time, each call emits a marshaling stub into <code class="ic">pa_call_paw()</code> in <code class="ic">runtime_bridge.c</code>:
           </p>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div class="bg-surface border hairline rounded-md p-4 space-y-2">
+              <div class="font-mono text-ink-primary font-semibold">Inbound (<code class="ic">PA_TO_PY_IN</code>) &middot; .pa &rarr; .paw</div>
+              <ul class="text-ink-secondary space-y-1.5 list-disc pl-4 leading-relaxed">
+                <li><strong class="text-ink-primary">Pre-flight customs (<code class="ic">check_out</code>):</strong> validates finite floats (unless <code class="ic">@allow_nan</code>), non-negative lengths, and non-NULL pointers; in <code class="ic">--mode dev</code> scans every element of <code class="ic">float32</code>/<code class="ic">float64</code> buffers for <code class="ic">NaN</code>/<code class="ic">Inf</code> (<code class="ic">--mode prod</code> skips the scan).</li>
+                <li><strong class="text-ink-primary">Zero-copy buffer views (<code class="ic">build_arg</code>):</strong> contiguous Pa containers (<code class="ic">FixedList</code>, <code class="ic">Vec</code>, <code class="ic">StackVec</code>, <code class="ic">Span</code>) are wrapped with <code class="ic">PyMemoryView_FromMemory(..., PyBUF_READ)</code> and <code class="ic">.cast()</code> to native format codes (<code class="ic">i/q/B/I/Q/f/d/?</code>), so <code class="ic">np.frombuffer(arr, &hellip;)</code> reads Pa memory directly without copying or mutating it.</li>
+                <li><strong class="text-ink-primary">Strings &amp; scalars:</strong> <code class="ic">str_view</code> decodes as strict UTF-8 <code class="ic">str</code>; scalars box to Python <code class="ic">int</code>/<code class="ic">float</code>/<code class="ic">bool</code>.</li>
+              </ul>
+            </div>
+
+            <div class="bg-surface border hairline rounded-md p-4 space-y-2">
+              <div class="font-mono text-ink-primary font-semibold">Outbound (<code class="ic">PY_TO_PA_OUT</code>) &middot; .paw &rarr; .pa</div>
+              <ul class="text-ink-secondary space-y-1.5 list-disc pl-4 leading-relaxed">
+                <li><strong class="text-ink-primary">Strict scalar unboxing (<code class="ic">unbox</code>):</strong> catches Python exceptions, rejects <code class="ic">None</code> for non-<code class="ic">void</code> returns, blocks <code class="ic">bool</code>/<code class="ic">int</code>/<code class="ic">float</code> type drift, checks exact integer width bounds, and rejects <code class="ic">NaN</code>/<code class="ic">Inf</code>.</li>
+                <li><strong class="text-ink-primary">Fast-path buffer handoff (<code class="ic">unbox_buffer</code>):</strong> C-contiguous buffers (<code class="ic">numpy.ndarray</code>, <code class="ic">array.array</code>, <code class="ic">bytes</code>, <code class="ic">memoryview</code>) validate format &amp; <code class="ic">itemsize</code> via <code class="ic">PyObject_GetBuffer</code>, then transfer into a fresh <code class="ic">malloc</code> buffer with a single <code class="ic">memcpy</code> so Pa owns its RAII lifetime independently of Python GC.</li>
+                <li><strong class="text-ink-primary">Sequence fallback:</strong> plain Python <code class="ic">list</code>/<code class="ic">tuple</code> falls back to <code class="ic">PySequence_Fast</code> with per-element <code class="ic">None</code>, type, and overflow checks; <code class="ic">--mode dev</code> additionally scans returned float <code class="ic">Vec</code>s for <code class="ic">NaN</code>/<code class="ic">Inf</code>.</li>
+              </ul>
+            </div>
+          </div>
+
           <ul class="text-xs leading-relaxed text-ink-secondary space-y-1.5 list-disc pl-5">
-            <li><strong class="text-ink-primary">Allowed boundary types:</strong> parameters accept <code class="ic">i32 i64 u8 u32 u64 f32 f64 bool</code> (plus <code class="ic">int</code>/<code class="ic">float</code>), <code class="ic">str_view</code>, <code class="ic">span[T]</code>, <code class="ic">list[T, N]</code>, and <code class="ic">Vec[T]</code>. Returns accept numeric scalars, <code class="ic">Vec[T]</code>, or <code class="ic">void</code> (never a string — return <code class="ic">Vec[u8]</code>).</li>
-            <li><strong class="text-ink-primary">Zero-copy buffers:</strong> contiguous Pa arrays (<code class="ic">FixedList</code>, <code class="ic">Vec</code>, <code class="ic">StackVec</code>, <code class="ic">Span</code>) are exposed to Python via read-only <code class="ic">PyMemoryView_FromMemory</code> cast to the native format (<code class="ic">i/q/B/I/Q/f/d/?</code>), so <code class="ic">np.frombuffer(arr, …)</code> reads Pa memory directly.</li>
-            <li><strong class="text-ink-primary">Two-way customs:</strong> out-bound (<code class="ic">PA_TO_PY_IN</code>) checks NaN/Inf (waivable per-function via <code class="ic">@allow_nan</code>), NULL pointers, negative lengths, and narrowing ranges; in-bound (<code class="ic">PY_TO_PA_OUT</code>) rejects <code class="ic">None</code>, NaN/Inf, type drift, integer overflow, buffer format mismatch, and Python exceptions. Every violation writes a replayable <code class="ic">in_payload_snapshot</code>.</li>
+            <li><strong class="text-ink-primary">Fault reporting &amp; isolation:</strong> any violation or Python exception writes <code class="ic">pa_boundary_fault.json</code> with a replayable <code class="ic">in_payload_snapshot</code> (up to 1024 buffer elements in <code class="ic">dev</code>, 16 in <code class="ic">prod</code>). Executables exit with code <strong class="text-ink-primary">70</strong>; <code class="ic">--shared</code> libraries release the GIL and <code class="ic">longjmp</code> cleanly back to the host.</li>
             <li><strong class="text-ink-primary">Embedded &amp; relocatable:</strong> imported <code class="ic">.paw</code> sources are embedded into the binary (runtime <code class="ic">__file__</code> is <code class="ic">&lt;embedded&gt;/&lt;name&gt;.paw</code>; override with <code class="ic">PA_PATH</code>). Pure-native binaries with no <code class="ic">.paw</code> link no Python at all.</li>
           </ul>
         </section>
