@@ -263,63 +263,64 @@
               <!-- Vector Closed-Loop Diagram -->
               <div class="p-4 sm:p-6 bg-[#0B0B0D]">
                 <svg
-                  viewBox="0 0 600 400"
+                  viewBox="0 0 640 380"
                   fill="none"
                   xmlns="http://www.w3.org/2000/svg"
                   class="w-full h-auto block"
                   role="img"
-                  aria-label="Pa AI-Native Closed-Loop Diagram: Prompt and Skill to JSON 1-Shot Repair, Human-Auditable .pa, and LLVM -O2 Native Binary / Python .so"
+                  aria-label="Pa AI-Native Execution Loop: Prompt and Skill, JSON Repair, Human Audit, and Native .so"
                 >
                   <defs>
                     <radialGradient id="loop-glow" cx="50%" cy="50%" r="50%">
-                      <stop offset="0%" stop-color="#C4B5FD" stop-opacity="0.16" />
+                      <stop offset="0%" stop-color="#C4B5FD" stop-opacity="0.11" />
+                      <stop offset="65%" stop-color="#C4B5FD" stop-opacity="0.03" />
                       <stop offset="100%" stop-color="#C4B5FD" stop-opacity="0" />
                     </radialGradient>
-                    <marker id="arrow-accent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                      <path d="M 1 1.5 L 8.5 5 L 1 8.5 z" fill="#C4B5FD" />
+                    <marker id="chev-accent" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto">
+                      <path d="M 1.5 1.2 L 5.8 4 L 1.5 6.8" fill="none" stroke="#C4B5FD" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
                     </marker>
-                    <marker id="arrow-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                      <path d="M 1 1.5 L 8.5 5 L 1 8.5 z" fill="#5EEAD4" />
+                    <marker id="chev-teal" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto">
+                      <path d="M 1.5 1.2 L 5.8 4 L 1.5 6.8" fill="none" stroke="#5EEAD4" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
                     </marker>
                   </defs>
 
-                  <!-- Subtle Background Orbit & Center Glow -->
-                  <ellipse cx="300" cy="200" rx="205" ry="145" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="4 5" />
-                  <circle cx="300" cy="200" r="115" fill="url(#loop-glow)" />
+                  <!-- Subtle Ambient Center Glow & Typographic Watermark (No Box) -->
+                  <circle cx="320" cy="190" r="96" fill="url(#loop-glow)" />
+                  <text x="320" y="186" text-anchor="middle" fill="#E4E4E7" fill-opacity="0.72" font-family="JetBrains Mono, monospace" font-size="11.5" font-weight="600" letter-spacing="3">1-SHOT LOOP</text>
+                  <text x="320" y="204" text-anchor="middle" fill="#71717A" font-family="JetBrains Mono, monospace" font-size="9" letter-spacing="2">0 RETRY WASTE</text>
 
-                  <!-- Clockwise Curved Connectors -->
-                  <path d="M 426 50 Q 505 50 503 155" stroke="#C4B5FD" stroke-width="1.5" marker-end="url(#arrow-accent)" />
-                  <path d="M 503 238 Q 505 350 433 350" stroke="#C4B5FD" stroke-width="1.5" marker-end="url(#arrow-accent)" />
-                  <path d="M 174 350 Q 95 350 97 245" stroke="#5EEAD4" stroke-width="1.5" marker-end="url(#arrow-teal)" />
-                  <path d="M 97 162 Q 95 50 167 50" stroke="#5EEAD4" stroke-width="1.5" marker-end="url(#arrow-teal)" />
+                  <!-- Fine 1.2px Clockwise Orbital Tracks + Terminal Dots -->
+                  <path d="M 418 52 Q 528 52 528 155" stroke="#C4B5FD" stroke-opacity="0.7" stroke-width="1.2" marker-end="url(#chev-accent)" />
+                  <circle cx="418" cy="52" r="2.2" fill="#C4B5FD" fill-opacity="0.85" />
 
-                  <!-- Center Anchor Badge -->
-                  <rect x="198" y="166" width="204" height="68" rx="10" fill="#09090B" stroke="rgba(196,181,253,0.45)" stroke-width="1.2" />
-                  <circle cx="243" cy="192" r="3" fill="#C4B5FD" />
-                  <text x="305" y="196" text-anchor="middle" fill="#C4B5FD" font-family="JetBrains Mono, monospace" font-size="13" font-weight="600" letter-spacing="1.2">1-SHOT LOOP</text>
-                  <text x="300" y="218" text-anchor="middle" fill="#A1A1AA" font-family="Inter, sans-serif" font-size="10.5">Slash token burn · Native C++ speed</text>
+                  <path d="M 528 222 Q 528 328 421 328" stroke="#C4B5FD" stroke-opacity="0.45" stroke-width="1.2" stroke-dasharray="3 4" marker-end="url(#chev-accent)" />
+                  <circle cx="528" cy="222" r="2.2" fill="#C4B5FD" fill-opacity="0.7" />
 
-                  <!-- Node 01: Top (Prompt & Skill) -->
-                  <rect x="174" y="18" width="252" height="64" rx="8" fill="#111113" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
-                  <text x="300" y="44" text-anchor="middle" fill="#FAFAFA" font-family="JetBrains Mono, monospace" font-size="12" font-weight="600">01 · Prompt + Skill</text>
-                  <text x="300" y="64" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="10">pa-coder / py-to-pa guides generation</text>
+                  <path d="M 222 328 Q 112 328 112 225" stroke="#5EEAD4" stroke-opacity="0.45" stroke-width="1.2" stroke-dasharray="3 4" marker-end="url(#chev-teal)" />
+                  <circle cx="222" cy="328" r="2.2" fill="#5EEAD4" fill-opacity="0.7" />
 
-                  <!-- Node 02: Right (Deterministic Repair — Purple Highlight) -->
-                  <rect x="418" y="162" width="170" height="76" rx="8" fill="#111113" stroke="#C4B5FD" stroke-width="1.5" />
-                  <text x="503" y="187" text-anchor="middle" fill="#C4B5FD" font-family="JetBrains Mono, monospace" font-size="11" font-weight="600">02 · JSON 1-Shot Repair</text>
-                  <text x="503" y="206" text-anchor="middle" fill="#FAFAFA" font-family="JetBrains Mono, monospace" font-size="10">causal_chain + patch</text>
-                  <text x="503" y="222" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="9.5">no guess loops</text>
+                  <path d="M 112 158 Q 112 52 219 52" stroke="#5EEAD4" stroke-opacity="0.7" stroke-width="1.2" marker-end="url(#chev-teal)" />
+                  <circle cx="112" cy="158" r="2.2" fill="#5EEAD4" fill-opacity="0.85" />
 
-                  <!-- Node 03: Bottom (Human Review) -->
-                  <rect x="174" y="318" width="252" height="64" rx="8" fill="#111113" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
-                  <text x="300" y="344" text-anchor="middle" fill="#FAFAFA" font-family="JetBrains Mono, monospace" font-size="12" font-weight="600">03 · Human-Auditable .pa</text>
-                  <text x="300" y="364" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="10">zero-annotation bodies · flat RAII</text>
+                  <!-- Node 01: Top (188x56) -->
+                  <rect x="226" y="24" width="188" height="56" rx="6" fill="#111113" stroke="rgba(255,255,255,0.10)" stroke-width="1" />
+                  <text x="320" y="47" text-anchor="middle" fill="#FAFAFA" font-family="JetBrains Mono, monospace" font-size="11.5" font-weight="600">01 · Prompt + Skill</text>
+                  <text x="320" y="65" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="10">pa-coder</text>
 
-                  <!-- Node 04: Left (Native Output & Interop — Teal Highlight) -->
-                  <rect x="12" y="162" width="170" height="76" rx="8" fill="#111113" stroke="rgba(94,234,212,0.55)" stroke-width="1.25" />
-                  <text x="97" y="187" text-anchor="middle" fill="#5EEAD4" font-family="JetBrains Mono, monospace" font-size="10.5" font-weight="600">04 · LLVM -O2 &amp; .so</text>
-                  <text x="97" y="206" text-anchor="middle" fill="#FAFAFA" font-family="JetBrains Mono, monospace" font-size="10">native binary</text>
-                  <text x="97" y="222" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="9.5">zero-ctypes import</text>
+                  <!-- Node 02: Right (188x56, Purple Highlight) -->
+                  <rect x="434" y="162" width="188" height="56" rx="6" fill="#111113" stroke="#C4B5FD" stroke-width="1.25" />
+                  <text x="528" y="185" text-anchor="middle" fill="#C4B5FD" font-family="JetBrains Mono, monospace" font-size="11.5" font-weight="600">02 · JSON Repair</text>
+                  <text x="528" y="203" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="10">causal_chain + patch</text>
+
+                  <!-- Node 03: Bottom (188x56) -->
+                  <rect x="226" y="300" width="188" height="56" rx="6" fill="#111113" stroke="rgba(255,255,255,0.10)" stroke-width="1" />
+                  <text x="320" y="323" text-anchor="middle" fill="#FAFAFA" font-family="JetBrains Mono, monospace" font-size="11.5" font-weight="600">03 · Human Audit</text>
+                  <text x="320" y="341" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="10">zero-annotation · RAII</text>
+
+                  <!-- Node 04: Left (188x56, Teal Accent) -->
+                  <rect x="18" y="162" width="188" height="56" rx="6" fill="#111113" stroke="rgba(94,234,212,0.55)" stroke-width="1.15" />
+                  <text x="112" y="185" text-anchor="middle" fill="#5EEAD4" font-family="JetBrains Mono, monospace" font-size="11.5" font-weight="600">04 · Native .so</text>
+                  <text x="112" y="203" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="10">LLVM -O2 · direct import</text>
                 </svg>
               </div>
 
