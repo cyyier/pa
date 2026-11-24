@@ -45,7 +45,9 @@ def find_c_compiler() -> tuple[str, str]:
         return ("mingw" if sys.platform == "win32" else "gcc"), resolved
 
     if sys.platform == "win32":
-        candidates = (("msvc", "cl"), ("clang", "clang"), ("mingw", "gcc"))
+        # Prefer MSVC (`cl`) in Developer Prompt/CI; otherwise prefer MinGW `gcc` (ships its own CRT/math.h)
+        # over bare `clang` (which requires Visual Studio SDK headers in INCLUDE).
+        candidates = (("msvc", "cl"), ("mingw", "gcc"), ("clang", "clang"))
     elif sys.platform == "darwin":
         candidates = (("clang", "clang"), ("clang", "cc"), ("gcc", "gcc"))
     else:

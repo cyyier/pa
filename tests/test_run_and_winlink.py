@@ -136,3 +136,15 @@ def test_shared_abi3_limited_api_builds_and_imports(tmp_path: Path, monkeypatch:
     mod = importlib.import_module("abi3_mod")
     assert abs(mod.scale_sum(array.array("d", [1.0, 2.0, 3.0]), 2.0) - 12.0) < 1e-12
     assert mod.str_len("hello") == 5
+
+
+def test_windows_prefers_mingw_gcc_over_bare_clang(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("PA_CC", raising=False)
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(
+        build_mod.shutil,
+        "which",
+        lambda name: {"clang": "C:/LLVM/bin/clang.exe", "gcc": "C:/msys64/ucrt64/bin/gcc.exe"}.get(name),
+    )
+    kind, cc = build_mod.find_c_compiler()
+    assert kind == "mingw" and cc.endswith("gcc.exe")

@@ -187,66 +187,44 @@
       <div class="hero-grid pointer-events-none absolute inset-0" aria-hidden="true"></div>
 
       <div class="relative max-w-6xl mx-auto px-6 pt-14 pb-16 lg:pt-20 lg:pb-20">
-        <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
-          <div class="max-w-2xl">
-            <div class="inline-flex items-center gap-2 font-mono text-[11px] text-ink-secondary border hairline bg-surface rounded-full px-3 py-1 mb-5">
-              <span class="w-1.5 h-1.5 rounded-full bg-[#5EEAD4]"></span>
-              <span>libpa ecosystem · Zero-compiler PyPI wheels · Python 3.10–3.14+</span>
-            </div>
-            <h1 class="text-3xl sm:text-4xl font-semibold tracking-tight leading-[1.1] text-ink-primary">
-              libpa —<br />
-              <span class="text-ink-secondary">Prebuilt native libraries, <code class="font-mono text-2xl sm:text-3xl text-ink-primary">pip install</code> ready.</span>
-            </h1>
-            <p class="mt-4 text-sm sm:text-[15px] leading-relaxed text-ink-secondary">
-              High-performance scientific and algorithmic packages written in pure Pa and compiled via LLVM&nbsp;<code class="font-mono text-xs text-ink-primary">-O2</code>.
-              Zero C compiler, zero LLVM, and zero runtime bloat on your machine&mdash;just <code class="font-mono text-xs text-ink-primary">pip install</code>
-              and <code class="font-mono text-xs text-ink-primary">import</code>, or link the pure <code class="font-mono text-xs text-ink-primary">.pa</code> core statically.
-            </p>
-
-            <div class="mt-6 flex flex-wrap items-center gap-3">
-              <a
-                href="#packages"
-                class="inline-flex items-center gap-2 bg-accent text-canvas hover:bg-[#D4C8FE] font-medium text-xs px-4 py-2.5 rounded-md transition-colors"
-              >
-                <span>Select Packages</span>
-                <i data-lucide="arrow-down" class="w-3.5 h-3.5"></i>
-              </a>
-              <a
-                href="#usage"
-                class="inline-flex items-center gap-2 border hairline bg-surface hover:bg-white/[0.04] text-ink-primary font-mono text-xs px-3.5 py-2.5 rounded-md transition-colors"
-              >
-                <span>3 Usage Modes</span>
-              </a>
-              <a
-                href="https://github.com/cyyier/libpa"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="inline-flex items-center gap-1.5 text-ink-secondary hover:text-ink-primary font-mono text-xs px-2 py-2.5 transition-colors"
-              >
-                <i data-lucide="github" class="w-3.5 h-3.5 text-ink-muted"></i>
-                <span>cyyier/libpa</span>
-                <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-ink-muted"></i>
-              </a>
-            </div>
+        <div class="max-w-2xl">
+          <div class="inline-flex items-center gap-2 font-mono text-[11px] text-ink-secondary border hairline bg-surface rounded-full px-3 py-1 mb-5">
+            <span class="w-1.5 h-1.5 rounded-full bg-[#5EEAD4]"></span>
+            <span>libpa · Prebuilt PyPI wheels · Python 3.10–3.14+</span>
           </div>
+          <h1 class="text-3xl sm:text-4xl font-semibold tracking-tight leading-[1.1] text-ink-primary">
+            libpa —<br />
+            <span class="text-ink-secondary">Prebuilt native libraries, <code class="font-mono text-2xl sm:text-3xl text-ink-primary">pip install</code> ready.</span>
+          </h1>
+          <p class="mt-4 text-sm sm:text-[15px] leading-relaxed text-ink-secondary">
+            Algorithmic and scientific packages written in Pa and compiled with LLVM&nbsp;<code class="font-mono text-xs text-ink-primary">-O2</code>.
+            Install ready-to-import wheels with no compiler setup, or statically link the pure <code class="font-mono text-xs text-ink-primary">.pa</code> source.
+          </p>
 
-          <!-- Compact Ecosystem Metrics -->
-          <div class="grid grid-cols-3 gap-3 lg:w-[380px] shrink-0">
-            <div class="bg-surface border hairline rounded-md p-3.5">
-              <div class="font-mono text-[10px] uppercase tracking-wider text-ink-muted">Batch Speed</div>
-              <div class="mt-1 font-mono text-lg font-semibold text-accent tabular-nums">530&times;</div>
-              <div class="text-[11px] text-ink-secondary">vs Python</div>
-            </div>
-            <div class="bg-surface border hairline rounded-md p-3.5">
-              <div class="font-mono text-[10px] uppercase tracking-wider text-ink-muted">Wheel ABI</div>
-              <div class="mt-1 font-mono text-lg font-semibold text-[#5EEAD4]">abi3</div>
-              <div class="text-[11px] text-ink-secondary">3.10–3.14+</div>
-            </div>
-            <div class="bg-surface border hairline rounded-md p-3.5">
-              <div class="font-mono text-[10px] uppercase tracking-wider text-ink-muted">Pure Pa RSS</div>
-              <div class="mt-1 font-mono text-lg font-semibold text-ink-primary tabular-nums">1.7 MB</div>
-              <div class="text-[11px] text-ink-secondary">0 libpython</div>
-            </div>
+          <div class="mt-6 flex flex-wrap items-center gap-3">
+            <a
+              href="#packages"
+              class="inline-flex items-center gap-2 bg-accent text-canvas hover:bg-[#D4C8FE] font-medium text-xs px-4 py-2.5 rounded-md transition-colors"
+            >
+              <span>Select Packages</span>
+              <i data-lucide="arrow-down" class="w-3.5 h-3.5"></i>
+            </a>
+            <a
+              href="#usage"
+              class="inline-flex items-center gap-2 border hairline bg-surface hover:bg-white/[0.04] text-ink-primary font-mono text-xs px-3.5 py-2.5 rounded-md transition-colors"
+            >
+              <span>Usage Modes</span>
+            </a>
+            <a
+              href="https://github.com/cyyier/libpa"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center gap-1.5 text-ink-secondary hover:text-ink-primary font-mono text-xs px-2 py-2.5 transition-colors"
+            >
+              <i data-lucide="github" class="w-3.5 h-3.5 text-ink-muted"></i>
+              <span>cyyier/libpa</span>
+              <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-ink-muted"></i>
+            </a>
           </div>
         </div>
       </div>
@@ -304,8 +282,8 @@
             </div>
           </div>
           <div class="px-4 py-1.5 border-t hairline bg-canvas/70 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] text-ink-muted">
-            <span>Prebuilt wheels: <span class="text-ink-secondary">Linux (manylinux_2_28) · macOS · Windows</span></span>
-            <span>No <span class="text-ink-secondary">pa-compiler</span> or C toolchain required</span>
+            <span>Wheels: <span class="text-ink-secondary">Linux (manylinux_2_28) · macOS · Windows</span></span>
+            <span><span class="text-ink-secondary">cp310</span> + <span class="text-ink-secondary">cp311-abi3</span> (Python 3.10–3.14+)</span>
           </div>
         </div>
 
@@ -371,9 +349,6 @@
           <p class="font-mono text-[11px] uppercase tracking-wider text-accent mb-2">
             02 / Three Usage Modes
           </p>
-          <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight leading-tight text-ink-primary">
-            One package. Three ways to consume it.
-          </h2>
           <p class="mt-3 text-sm leading-relaxed text-ink-secondary">
             Every <code class="font-mono text-xs text-ink-primary">*-pa</code> release bundles a prebuilt native wheel,
             pure <code class="font-mono text-xs text-ink-primary">.pa</code> source modules via <code class="font-mono text-xs text-ink-primary">pa_lang.libs</code>,
@@ -386,16 +361,12 @@
           <!-- Mode 1: Prebuilt PyPI Wheels -->
           <article class="bg-surface border hairline rounded-md p-6 flex flex-col justify-between">
             <div>
-              <div class="flex items-center justify-between gap-2 mb-3">
-                <span class="font-mono text-[11px] text-accent font-semibold">MODE 01 · PYTHON WHEELS</span>
-                <span class="font-mono text-[10px] text-[#5EEAD4] border border-[#5EEAD4]/30 bg-[#5EEAD4]/10 px-1.5 py-0.5 rounded">0 compiler</span>
-              </div>
+              <span class="font-mono text-[11px] text-accent font-semibold block mb-3">01 · PYTHON WHEELS</span>
               <h3 class="text-base font-semibold tracking-tight text-ink-primary">
-                Zero-compile <code class="font-mono text-sm">pip install</code>
+                Direct <code class="font-mono text-sm">pip install</code>
               </h3>
               <p class="mt-2 text-xs leading-relaxed text-ink-secondary">
-                Install pre-compiled <code class="font-mono text-ink-primary">cp310</code> &amp; <code class="font-mono text-ink-primary">cp311-abi3</code>
-                wheels directly from PyPI. Works out of the box on Python 3.10–3.14+ with zero <code class="font-mono text-ink-primary">ctypes</code> boilerplate.
+                Drop-in native extensions from PyPI with no local compiler or wrapper boilerplate.
               </p>
 
               <div class="mt-4 bg-canvas border hairline rounded-md overflow-hidden">
@@ -427,17 +398,13 @@
           <!-- Mode 2: Pure Native .pa Static Import -->
           <article class="bg-surface border hairline rounded-md p-6 flex flex-col justify-between">
             <div>
-              <div class="flex items-center justify-between gap-2 mb-3">
-                <span class="font-mono text-[11px] text-accent font-semibold">MODE 02 · PURE PA STATIC</span>
-                <span class="font-mono text-[10px] text-accent border border-accent/30 bg-accent/10 px-1.5 py-0.5 rounded">1.7 MB RSS</span>
-              </div>
+              <span class="font-mono text-[11px] text-accent font-semibold block mb-3">02 · PURE PA STATIC</span>
               <h3 class="text-base font-semibold tracking-tight text-ink-primary">
-                Zero-overhead <code class="font-mono text-sm">.pa</code> import
+                Static <code class="font-mono text-sm">.pa</code> import
               </h3>
               <p class="mt-2 text-xs leading-relaxed text-ink-secondary">
-                Each package registers its pure <code class="font-mono text-ink-primary">pa/</code> kernels via
-                <code class="font-mono text-ink-primary">pa_lang.libs</code>. Import directly in standalone <code class="font-mono text-ink-primary">.pa</code>
-                programs with zero Python runtime linked.
+                Every wheel registers its pure <code class="font-mono text-ink-primary">pa/</code> source via
+                <code class="font-mono text-ink-primary">pa_lang.libs</code> for standalone <code class="font-mono text-ink-primary">.pa</code> builds with no Python runtime.
               </p>
 
               <div class="mt-4 bg-canvas border hairline rounded-md overflow-hidden">
@@ -470,42 +437,49 @@
           <!-- Mode 3: Custom Batch Loop Template -->
           <article class="bg-surface border hairline rounded-md p-6 flex flex-col justify-between">
             <div>
-              <div class="flex items-center justify-between gap-2 mb-3">
-                <span class="font-mono text-[11px] text-[#5EEAD4] font-semibold">MODE 03 · CUSTOM BUILD</span>
-                <span class="font-mono text-[10px] text-[#5EEAD4] border border-[#5EEAD4]/30 bg-[#5EEAD4]/10 px-1.5 py-0.5 rounded">530&times; faster</span>
-              </div>
+              <span class="font-mono text-[11px] text-[#5EEAD4] font-semibold block mb-3">03 · CUSTOM BUILD</span>
               <h3 class="text-base font-semibold tracking-tight text-ink-primary">
-                Fuse hot loops via <code class="font-mono text-sm">loop-template/</code>
+                Fuse loops via <code class="font-mono text-sm">loop-template/</code>
               </h3>
               <p class="mt-2 text-xs leading-relaxed text-ink-secondary">
-                Eliminate Python <code class="font-mono text-ink-primary">for</code>-loop boundary overhead. Edit only the marked inner loop in
-                <code class="font-mono text-ink-primary">custom_batch.pa</code> (zero-copy In/Out pre-wired) and compile a custom <code class="font-mono text-ink-primary">.so</code>/<code class="font-mono text-ink-primary">.pyd</code>.
+                Move Python <code class="font-mono text-ink-primary">for</code> loops into native code: edit only the marked loop body in
+                <code class="font-mono text-ink-primary">custom_batch.pa</code> and compile your own <code class="font-mono text-ink-primary">.so</code>/<code class="font-mono text-ink-primary">.pyd</code>.
               </p>
 
               <div class="mt-4 bg-canvas border hairline rounded-md overflow-hidden">
                 <div class="px-3 py-1.5 border-b hairline flex items-center justify-between font-mono text-[10px] text-ink-muted">
-                  <span>compile &amp; import custom_batch</span>
+                  <span>clone template, compile &amp; import</span>
                   <button
                     type="button"
                     class="copy-snippet inline-flex items-center gap-1 text-ink-secondary hover:text-ink-primary cursor-pointer"
-                    data-copy="pac build --shared --mode prod -I ../pa custom_batch.pa -o custom_batch.so"
+                    data-copy="git clone https://github.com/cyyier/libpa.git&#10;cd libpa/packages/levenshtein-pa/loop-template&#10;pac build --shared --mode prod -I ../pa custom_batch.pa -o custom_batch.so"
                   >
                     <i data-lucide="copy" class="w-3 h-3"></i>
                     <span>Copy</span>
                   </button>
                 </div>
-                <pre class="p-3 font-mono text-[11px] leading-[1.65] overflow-x-auto"><code><span class="tok-op">$</span> <span class="tok-id">pac build --shared --mode prod \</span>
+                <pre class="p-3 font-mono text-[11px] leading-[1.65] overflow-x-auto"><code><span class="tok-op">$</span> <span class="tok-id">git clone https://github.com/cyyier/libpa.git</span>
+<span class="tok-op">$</span> <span class="tok-id">cd libpa/packages/levenshtein-pa/loop-template</span>
+<span class="tok-cm"># Edit the marked loop body in custom_batch.pa, then:</span>
+<span class="tok-op">$</span> <span class="tok-id">pac build --shared --mode prod \</span>
     <span class="tok-id">-I ../pa custom_batch.pa -o custom_batch.so</span>
 
 <span class="tok-kw">import</span> <span class="tok-id">custom_batch</span>
-<span class="tok-id">hits</span> <span class="tok-op">=</span> <span class="tok-id">custom_batch</span><span class="tok-op">.</span><span class="tok-id">filter_batch</span><span class="tok-op">(</span>
-    <span class="tok-id">q</span><span class="tok-op">,</span> <span class="tok-id">corpus</span><span class="tok-op">,</span> <span class="tok-id">offsets</span><span class="tok-op">,</span> <span class="tok-id">4</span><span class="tok-op">,</span> <span class="tok-id">out_idx</span><span class="tok-op">,</span> <span class="tok-id">out_dist</span>
-<span class="tok-op">)</span></code></pre>
+<span class="tok-id">hits</span> <span class="tok-op">=</span> <span class="tok-id">custom_batch</span><span class="tok-op">.</span><span class="tok-id">filter_batch</span><span class="tok-op">(</span><span class="tok-id">q</span><span class="tok-op">,</span> <span class="tok-id">corpus</span><span class="tok-op">,</span> <span class="tok-id">offsets</span><span class="tok-op">,</span> <span class="tok-id">4</span><span class="tok-op">,</span> <span class="tok-id">out_idx</span><span class="tok-op">,</span> <span class="tok-id">out_dist</span><span class="tok-op">)</span></code></pre>
               </div>
             </div>
 
-            <div class="mt-4 pt-3 border-t hairline font-mono text-[11px] text-ink-muted">
-              1 FFI call instead of 10,000 Python iterations
+            <div class="mt-4 pt-3 border-t hairline flex items-center justify-between gap-2 font-mono text-[11px] text-ink-muted">
+              <span>Requires <code class="text-ink-secondary">pa-compiler</code></span>
+              <a
+                href="https://github.com/cyyier/libpa/tree/main/packages/levenshtein-pa/loop-template"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-ink-secondary hover:text-accent inline-flex items-center gap-1 transition-colors"
+              >
+                <span>Browse template</span>
+                <i data-lucide="arrow-up-right" class="w-3 h-3"></i>
+              </a>
             </div>
           </article>
 
@@ -518,7 +492,7 @@
               Build your own <code class="text-ink-secondary">*-pa</code> package
             </p>
             <p class="text-sm font-medium text-ink-primary">
-              Use the bundled <code class="font-mono text-xs text-accent">libpa-pkg</code> AI skill to scaffold pure kernels, differential tests, <code class="font-mono text-xs text-accent">loop-template/</code>, and <code class="font-mono text-xs text-[#5EEAD4]">cp311-abi3</code> wheels in minutes.
+              Scaffold new packages, differential tests, and <code class="font-mono text-xs text-accent">loop-template/</code> with the <code class="font-mono text-xs text-accent">libpa-pkg</code> skill.
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-3 shrink-0">
@@ -690,7 +664,7 @@
 
               <div class="mt-4 bg-canvas border hairline rounded overflow-hidden select-text" data-no-toggle>
                 <div class="px-3 py-1.5 border-b hairline flex items-center justify-between font-mono text-[10px] text-ink-muted">
-                  <span>Python · zero ctypes</span>
+                  <span>Python</span>
                   <span class="text-ink-secondary">import ${pkg.importName}</span>
                 </div>
                 <pre class="p-3 font-mono text-[11px] leading-[1.6] overflow-x-auto"><code>${pkg.snippet}</code></pre>
