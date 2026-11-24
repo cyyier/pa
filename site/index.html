@@ -258,59 +258,30 @@
             </div>
           </div>
 
-          <!-- Right Column: Minimalist 3-Circle Venn Diagram -->
-          <div class="lg:col-span-7 w-full">
-            <div class="bg-surface border hairline rounded-md overflow-hidden">
-              <!-- Card Header -->
-              <div class="flex items-center justify-between border-b hairline bg-canvas px-4 py-2.5 font-mono text-[11px]">
-                <span class="text-ink-primary font-semibold tracking-wider">DESIGN INTERSECTION</span>
-                <span class="text-ink-muted">AI-Native · Human-Auditable · Native Speed</span>
-              </div>
+          <!-- Right Column: Transparent Floating Minimalist 3-Circle Venn Diagram -->
+          <div class="lg:col-span-7 w-full flex items-center justify-center">
+            <svg
+              viewBox="0 0 600 500"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              class="w-full max-w-[560px] h-auto block"
+              role="img"
+              aria-label="Pa 3-Circle Venn Diagram: AI-Native, Human-Auditable, and Native Speed converging at Pa"
+            >
+              <!-- Three Intersecting Circles: 1px solid stroke, flat subtle fill -->
+              <circle cx="215" cy="191" r="148" fill="rgba(255,255,255,0.02)" stroke="#C4B5FD" stroke-width="1" />
+              <circle cx="385" cy="191" r="148" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.16)" stroke-width="1" />
+              <circle cx="300" cy="338" r="148" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.16)" stroke-width="1" />
 
-              <!-- Pure Flat Wireframe 3-Circle Venn SVG (Zero Gradients, Zero Glows) -->
-              <div class="px-4 py-3 sm:px-6 sm:py-4 bg-[#0B0B0D]">
-                <svg
-                  viewBox="0 0 640 448"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="w-full h-auto block"
-                  role="img"
-                  aria-label="Pa 3-Circle Venn Diagram: AI-Native, Human-Auditable, and Native Speed converging at Pa"
-                >
-                  <!-- Three Intersecting Circles: 1px solid stroke, flat subtle fill -->
-                  <circle cx="247" cy="182" r="126" fill="rgba(255,255,255,0.02)" stroke="#C4B5FD" stroke-width="1" />
-                  <circle cx="393" cy="182" r="126" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.16)" stroke-width="1" />
-                  <circle cx="320" cy="308" r="126" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.16)" stroke-width="1" />
+              <!-- Centered Circle Titles Only -->
+              <text x="158" y="174" text-anchor="middle" fill="#FAFAFA" font-family="Inter, sans-serif" font-size="15" font-weight="500" letter-spacing="-0.01em">AI-Native</text>
+              <text x="442" y="174" text-anchor="middle" fill="#FAFAFA" font-family="Inter, sans-serif" font-size="15" font-weight="500" letter-spacing="-0.01em">Human-Auditable</text>
+              <text x="300" y="404" text-anchor="middle" fill="#FAFAFA" font-family="Inter, sans-serif" font-size="15" font-weight="500" letter-spacing="-0.01em">Native Speed</text>
 
-                  <!-- Top-Left Circle Label: AI-Native -->
-                  <text x="195" y="156" text-anchor="middle" fill="#FAFAFA" font-family="Inter, sans-serif" font-size="13.5" font-weight="600" letter-spacing="-0.01em">AI-Native</text>
-                  <text x="195" y="175" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="9.5">pa-coder · 1-shot JSON</text>
-
-                  <!-- Top-Right Circle Label: Human-Auditable -->
-                  <text x="445" y="156" text-anchor="middle" fill="#FAFAFA" font-family="Inter, sans-serif" font-size="13.5" font-weight="600" letter-spacing="-0.01em">Human-Auditable</text>
-                  <text x="445" y="175" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="9.5">ast.parse · flat RAII</text>
-
-                  <!-- Bottom Circle Label: Native Speed -->
-                  <text x="320" y="356" text-anchor="middle" fill="#FAFAFA" font-family="Inter, sans-serif" font-size="13.5" font-weight="600" letter-spacing="-0.01em">Native Speed</text>
-                  <text x="320" y="375" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="9.5">LLVM -O2 · direct .so</text>
-
-                  <!-- Pairwise Intersection Labels (10px muted plain text) -->
-                  <text x="320" y="136" text-anchor="middle" fill="#71717A" font-family="JetBrains Mono, monospace" font-size="10">0-to-1 build</text>
-                  <text x="250" y="266" text-anchor="middle" fill="#71717A" font-family="JetBrains Mono, monospace" font-size="10">zero-copy</text>
-                  <text x="390" y="266" text-anchor="middle" fill="#71717A" font-family="JetBrains Mono, monospace" font-size="10">zero-GC</text>
-
-                  <!-- Center Convergence: Pure Dark Circle + Pa.png Logo -->
-                  <circle cx="320" cy="224" r="32" fill="#09090B" stroke="rgba(255,255,255,0.18)" stroke-width="1" />
-                  <image href="Pa.png" x="300" y="204" width="40" height="40" preserveAspectRatio="xMidYMid meet" />
-                </svg>
-              </div>
-
-              <!-- Status Footer -->
-              <div class="border-t hairline bg-canvas px-4 py-2 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] text-ink-muted">
-                <span>100% <span class="text-ink-secondary">ast.parse</span> compatible</span>
-                <span>RAII free at scope exit · 0 GC pauses</span>
-              </div>
-            </div>
+              <!-- Center Convergence: Pure Dark Circle + Pa.png Logo -->
+              <circle cx="300" cy="240" r="36" fill="#09090B" stroke="rgba(255,255,255,0.18)" stroke-width="1" />
+              <image href="Pa.png" x="278" y="218" width="44" height="44" preserveAspectRatio="xMidYMid meet" />
+            </svg>
           </div>
 
         </div>
