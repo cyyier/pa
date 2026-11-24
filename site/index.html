@@ -337,64 +337,96 @@
     <!-- 3. SECTION 01: AI-NATIVE BY DESIGN -->
     <section id="ai-native" class="border-b hairline">
       <div class="max-w-6xl mx-auto px-6 py-20">
-        <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
-          <div>
-            <p class="font-mono text-[11px] uppercase tracking-wider text-accent mb-2">
-              01 / AI-Native by Design
-            </p>
-            <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight leading-tight text-ink-primary">
-              1-Shot Repair. Zero retry loops.
-            </h2>
-          </div>
-          <p class="font-mono text-xs text-ink-secondary">
-            Causal chains + deterministic patches · slash token &amp; compute spend
+        <div class="mb-10 max-w-3xl">
+          <p class="font-mono text-[11px] uppercase tracking-wider text-accent mb-2">
+            01 / AI-Native by Design
+          </p>
+          <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight leading-tight text-ink-primary">
+            Prompt it. Skill triggers. Self-heals in 1 shot.
+          </h2>
+          <p class="mt-3 text-sm leading-relaxed text-ink-secondary">
+            From natural-language prompt to native LLVM binary&mdash;bundled skills guide generation
+            while deterministic JSON diagnostics fix edge cases before burning extra tokens.
           </p>
         </div>
 
-        <!-- Left / Right Comparison Card -->
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          <!-- Left: .pa Code Triggering PA_E050 -->
-          <div class="lg:col-span-5 bg-surface border hairline rounded-md overflow-hidden flex flex-col">
+        <!-- 3-Stage Agent Workflow Card -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <!-- Stage 1: Prompt & Skill Trigger -->
+          <div class="bg-surface border hairline rounded-md overflow-hidden flex flex-col">
             <div class="px-4 py-2.5 border-b hairline bg-canvas flex items-center justify-between font-mono text-[11px] text-ink-muted">
-              <span class="text-ink-primary">pipeline.pa</span>
-              <span class="text-red-400">PA_E050 · borrow mismatch</span>
+              <span class="text-ink-primary font-semibold">STAGE 1 · PROMPT &amp; SKILL</span>
+              <span class="text-accent">0-to-1 authoring</span>
             </div>
-            <pre class="p-4 sm:p-5 font-mono text-[12px] leading-[1.7] overflow-x-auto tabular-nums flex-1"><code><span class="text-ink-muted select-none mr-3">01</span><span class="tok-kw">def</span> <span class="tok-id">scale_in_place</span><span class="tok-op">(</span><span class="tok-id">xs</span><span class="tok-op">,</span> <span class="tok-id">k</span><span class="tok-op">) -&gt;</span> <span class="tok-id">void</span><span class="tok-op">:</span>
-<span class="text-ink-muted select-none mr-3">02</span>    <span class="tok-kw">for</span> <span class="tok-id">i</span> <span class="tok-kw">in</span> <span class="tok-id">range</span><span class="tok-op">(</span><span class="tok-id">len</span><span class="tok-op">(</span><span class="tok-id">xs</span><span class="tok-op">)):</span>
-<span class="text-ink-muted select-none mr-3">03</span>        <span class="tok-id">xs</span><span class="tok-op">[</span><span class="tok-id">i</span><span class="tok-op">] =</span> <span class="tok-id">xs</span><span class="tok-op">[</span><span class="tok-id">i</span><span class="tok-op">] *</span> <span class="tok-id">k</span>
-<span class="text-ink-muted select-none mr-3">04</span>
-<span class="text-ink-muted select-none mr-3">05</span><span class="tok-kw">def</span> <span class="tok-id">main</span><span class="tok-op">() -&gt;</span> <span class="tok-id">int</span><span class="tok-op">:</span>
-<span class="text-ink-muted select-none mr-3">06</span>    <span class="tok-id">series</span> <span class="tok-op">= [</span><span class="tok-id">1.0</span><span class="tok-op">,</span> <span class="tok-id">2.0</span><span class="tok-op">,</span> <span class="tok-id">3.0</span><span class="tok-op">]</span>
-<span class="block -mx-4 sm:-mx-5 px-4 sm:px-5 bg-red-500/10 border-l-2 border-red-400"><span class="text-red-400 select-none mr-3">07</span>    <span class="tok-id">scale_in_place</span><span class="tok-op">(</span><span class="tok-id">series</span><span class="tok-op">,</span> <span class="tok-id">2.0</span><span class="tok-op">)  </span><span class="tok-cm"># missing mut()</span></span><span class="text-ink-muted select-none mr-3">08</span>    <span class="tok-kw">return</span> <span class="tok-id">0</span></code></pre>
-            <div class="px-4 py-2.5 border-t hairline bg-canvas/70 font-mono text-[11px] text-ink-muted">
-              Prose errors force agents to guess across 3–6 turns. Pa hands over the exact fix.
+            <div class="p-4 flex-1 flex flex-col justify-between gap-4">
+              <div class="space-y-3">
+                <div class="bg-canvas border hairline rounded p-3 font-mono text-[11.5px] leading-relaxed text-ink-primary">
+                  <span class="text-accent select-none">&gt; </span>&ldquo;Write a native sensor-calibration kernel in Pa and expose it to Python.&rdquo;
+                </div>
+                <div class="inline-flex items-center gap-2 font-mono text-[11px] text-accent border border-accent/30 bg-accent/10 px-2.5 py-1 rounded">
+                  <span class="w-1.5 h-1.5 rounded-full bg-accent"></span>
+                  <span>Skill activated: pa-coder</span>
+                </div>
+                <p class="text-xs leading-relaxed text-ink-secondary">
+                  Automatically injects Pa&rsquo;s borrowing rules, flat RAII layout, and
+                  <code class="font-mono text-ink-primary">@export</code> conventions&mdash;no manual
+                  prompt engineering required.
+                </p>
+              </div>
+              <pre class="bg-canvas border hairline rounded p-3 font-mono text-[11px] leading-[1.6] overflow-x-auto tabular-nums"><code><span class="tok-cm"># Agent draft (sensor_cal.pa)</span>
+<span class="tok-kw">@export</span>
+<span class="tok-kw">def</span> <span class="tok-id">run</span><span class="tok-op">(</span><span class="tok-id">readings</span><span class="tok-op">:</span> <span class="tok-id">span</span><span class="tok-op">[</span><span class="tok-id">float</span><span class="tok-op">],</span> <span class="tok-id">bias</span><span class="tok-op">:</span> <span class="tok-id">float</span><span class="tok-op">) -&gt;</span> <span class="tok-id">void</span><span class="tok-op">:</span>
+<span class="block -mx-3 px-3 bg-red-500/10 border-l-2 border-red-400">    <span class="tok-id">calibrate_in_place</span><span class="tok-op">(</span><span class="tok-id">readings</span><span class="tok-op">,</span> <span class="tok-id">bias</span><span class="tok-op">)</span></span></code></pre>
             </div>
           </div>
 
-          <!-- Right: Structured JSON Repair Ticket -->
-          <div class="lg:col-span-7 bg-surface border hairline rounded-md overflow-hidden flex flex-col">
-            <div class="px-4 py-2.5 border-b hairline bg-canvas flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] text-ink-muted">
-              <span class="text-ink-primary">$ pac check --ai-diagnostic pipeline.pa</span>
-              <span class="text-accent">1-shot JSON repair ticket</span>
+          <!-- Stage 2: Background 1-Shot Self-Healing -->
+          <div class="bg-surface border hairline rounded-md overflow-hidden flex flex-col">
+            <div class="px-4 py-2.5 border-b hairline bg-canvas flex items-center justify-between font-mono text-[11px] text-ink-muted">
+              <span class="text-ink-primary font-semibold">STAGE 2 · 1-SHOT SELF-HEAL</span>
+              <span class="text-red-400">PA_E050</span>
             </div>
-            <pre class="p-4 sm:p-5 font-mono text-[11.5px] leading-[1.65] overflow-x-auto tabular-nums flex-1"><code><span class="tok-op">[{</span>
+            <pre class="p-4 font-mono text-[11px] leading-[1.6] overflow-x-auto tabular-nums flex-1"><code><span class="tok-cm"># $ pac check --ai-diagnostic sensor_cal.pa</span>
+<span class="tok-op">[{</span>
   <span class="tok-kw">"code"</span><span class="tok-op">:</span> <span class="tok-id">"PA_E050"</span><span class="tok-op">,</span>
-  <span class="tok-kw">"skill_rule_ref"</span><span class="tok-op">:</span> <span class="tok-id">"pa-coder#borrowing"</span><span class="tok-op">,</span>
-  <span class="tok-kw">"location"</span><span class="tok-op">:</span> <span class="tok-id">"pipeline.pa:7:5"</span><span class="tok-op">,</span>
   <span class="tok-kw">"causal_chain"</span><span class="tok-op">: [</span>
-    <span class="tok-id">"scale_in_place() writes to 'xs' at line 3"</span><span class="tok-op">,</span>
-    <span class="tok-id">"default container borrow is read-only (const T&amp;)"</span>
+    <span class="tok-id">"calibrate_in_place() mutates 'xs'"</span><span class="tok-op">,</span>
+    <span class="tok-id">"default borrow is read-only (const T&amp;)"</span>
   <span class="tok-op">],</span>
   <span class="tok-kw">"repair_plan"</span><span class="tok-op">: {</span>
-    <span class="tok-kw">"strategy"</span><span class="tok-op">:</span> <span class="tok-id">"wrap_mut_borrow"</span><span class="tok-op">,</span>
     <span class="tok-kw">"suggested_patches"</span><span class="tok-op">: [{</span>
-      <span class="tok-id">"line"</span><span class="tok-op">:</span> <span class="tok-id">7</span><span class="tok-op">,</span> <span class="tok-id">"original"</span><span class="tok-op">:</span> <span class="tok-id">"series"</span><span class="tok-op">,</span> <span class="tok-id">"replacement"</span><span class="tok-op">:</span> <span class="tok-id">"mut(series)"</span>
+      <span class="tok-id">"line"</span><span class="tok-op">:</span> <span class="tok-id">7</span><span class="tok-op">,</span>
+      <span class="tok-id">"original"</span><span class="tok-op">:</span> <span class="tok-id">"readings"</span><span class="tok-op">,</span>
+      <span class="tok-id">"replacement"</span><span class="tok-op">:</span> <span class="tok-id">"mut(readings)"</span>
     <span class="tok-op">}]</span>
   <span class="tok-op">}</span>
 <span class="tok-op">}]</span></code></pre>
-            <div class="px-4 py-2.5 border-t hairline bg-canvas/70 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] text-ink-muted">
-              <span>Also emits auto-fix patches for <span class="text-ink-secondary">@struct</span> layouts and type mismatches</span>
-              <span class="text-accent">exit 1 · 1 ticket</span>
+            <div class="px-4 py-2.5 border-t hairline bg-canvas/70 font-mono text-[11px] text-ink-muted">
+              Single-shot deterministic patch &mdash; slashes context tokens, API cost &amp; latency.
+            </div>
+          </div>
+
+          <!-- Stage 3: Verified Native Delivery -->
+          <div class="bg-surface border hairline rounded-md overflow-hidden flex flex-col">
+            <div class="px-4 py-2.5 border-b hairline bg-canvas flex items-center justify-between font-mono text-[11px] text-ink-muted">
+              <span class="text-ink-primary font-semibold">STAGE 3 · NATIVE DELIVERY</span>
+              <span class="text-[#5EEAD4]">0 retry loops</span>
+            </div>
+            <div class="p-4 flex-1 flex flex-col justify-between gap-4">
+              <pre class="bg-canvas border hairline rounded p-3 font-mono text-[11px] leading-[1.65] overflow-x-auto tabular-nums"><code><span class="tok-cm"># Auto-patched sensor_cal.pa</span>
+<span class="tok-kw">@export</span>
+<span class="tok-kw">def</span> <span class="tok-id">run</span><span class="tok-op">(</span><span class="tok-id">readings</span><span class="tok-op">:</span> <span class="tok-id">span</span><span class="tok-op">[</span><span class="tok-id">float</span><span class="tok-op">],</span> <span class="tok-id">bias</span><span class="tok-op">:</span> <span class="tok-id">float</span><span class="tok-op">) -&gt;</span> <span class="tok-id">void</span><span class="tok-op">:</span>
+<span class="block -mx-3 px-3 bg-[#5EEAD4]/10 border-l-2 border-[#5EEAD4]">    <span class="tok-id">calibrate_in_place</span><span class="tok-op">(</span><span class="tok-id">mut</span><span class="tok-op">(</span><span class="tok-id">readings</span><span class="tok-op">),</span> <span class="tok-id">bias</span><span class="tok-op">)</span></span></code></pre>
+              <div class="space-y-2.5">
+                <div class="bg-canvas border border-[#5EEAD4]/30 rounded p-3 font-mono text-[11px] leading-relaxed">
+                  <div class="text-[#5EEAD4] font-semibold">✓ pac build --shared --mode prod passed · 0 retry loops</div>
+                  <div class="text-ink-muted mt-1">Output: <span class="text-ink-primary">sensor_cal.so</span> (LLVM -O2 · direct Python import)</div>
+                </div>
+                <p class="text-xs leading-relaxed text-ink-secondary">
+                  Patch applies cleanly on the first pass&mdash;ready for human review and native
+                  <code class="font-mono text-ink-primary">import sensor_cal</code> delivery.
+                </p>
+              </div>
             </div>
           </div>
         </div>
