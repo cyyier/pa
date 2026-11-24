@@ -49,7 +49,7 @@ def test_project_metadata_is_complete():
                    "Operating System :: MacOS",
                    "Operating System :: Microsoft :: Windows"):
         assert os_cls in p["classifiers"]
-    assert p["requires-python"] == ">=3.11"
+    assert p["requires-python"] == ">=3.10"
     assert {"dev", "web", "release"} <= set(p["optional-dependencies"])
     assert all(re.search(r">=\d", d) for d in p["dependencies"])           # no unbounded-below runtime deps
 

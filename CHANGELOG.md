@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning: [SemVer](https://semver.org/) (`0.x` = alpha, the language and ABI may still change).
 
+## [0.1.1] - 2026-11-25
+
+### Added
+- `pac run <file.pa> [--mode dev|prod] [-I DIR] [-- <args...>]`: compile and execute standalone `.pa` programs via a temporary directory with zero leftover binary artifacts.
+- `pac build --shared --abi3`: emit CPython Limited API (`Py_LIMITED_API = 0x030B0000`, `cp311-abi3`) extensions (linking `python3.lib` on Windows) for forward-compatible wheels across Python 3.11+.
+- Support for Python 3.10 and Python 3.14 (`requires-python = ">=3.10"`).
+
+### Fixed
+- Windows MinGW (`gcc` / MinGW `clang`) `--shared` and standalone builds now statically link `libgcc`, `libstdc++`, and `libwinpthread` (with fallback if `libwinpthread` is unavailable), producing self-contained `.pyd`/`.dll` modules with zero extra MinGW DLLs required.
+
 ## [0.1.0] - 2026-11-25
 
 First public release.

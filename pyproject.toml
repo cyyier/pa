@@ -7,7 +7,7 @@ name = "pa-compiler"
 dynamic = ["version"]
 description = "Pa language: Python-syntax, C++-memory-layout, LLVM-compiled systems language with .paw bridges to the Python ecosystem"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "cyyier" }]
@@ -20,9 +20,11 @@ classifiers = [
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: C",
     "Topic :: Software Development :: Compilers",
     "Topic :: Software Development :: Code Generators",

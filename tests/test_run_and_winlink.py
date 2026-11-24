@@ -107,3 +107,32 @@ def test_windows_mingw_fallback_when_winpthread_missing(monkeypatch: pytest.Monk
     assert "-lwinpthread" in calls[0]
     assert "-lwinpthread" not in calls[1]
     assert "-static-libgcc" in calls[1] and "-static-libstdc++" in calls[1]
+
+
+def test_shared_abi3_limited_api_builds_and_imports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    import array
+    import importlib
+
+    src = tmp_path / "abi3_mod.pa"
+    src.write_text(
+        "@export\n"
+        "def scale_sum(xs: span[float], k: float) -> float:\n"
+        "    acc = 0.0\n"
+        "    for i in range(len(xs)):\n"
+        "        acc += xs[i] * k\n"
+        "    return acc\n\n"
+        "@export\n"
+        "def str_len(s: str_view) -> int:\n"
+        "    return len(s)\n",
+        encoding="utf-8",
+    )
+    ext = ".pyd" if sys.platform == "win32" else ".abi3.so"
+    out = tmp_path / f"abi3_mod{ext}"
+    built = build_mod.compile_pa(str(src), out=str(out), shared=True, mode="prod", abi3=True)
+    assert Path(built).is_file()
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+    importlib.invalidate_caches()
+    mod = importlib.import_module("abi3_mod")
+    assert abs(mod.scale_sum(array.array("d", [1.0, 2.0, 3.0]), 2.0) - 12.0) < 1e-12
+    assert mod.str_len("hello") == 5

@@ -2,7 +2,7 @@
   "name": "pa-lang",
   "displayName": "Pa Language",
   "description": "Pa (.pa / .paw): syntax, inferred-type inlay hints, memory-audit hover and diagnostics via `pac lsp`",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "cyyier",
   "license": "MIT",
   "icon": "icons/pa.png",

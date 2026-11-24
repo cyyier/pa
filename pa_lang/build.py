@@ -270,7 +270,7 @@ def _macos_make_rpath_relative(binary: str) -> None:
 
 def compile_pa(path: str, out: Optional[str] = None, shared: bool = False, emit_ir: bool = False,
                mode: str = "dev", python_home: Optional[str] = None, python_path: Optional[list] = None,
-               relocatable: bool = False, include_dirs: Optional[list] = None) -> str:
+               relocatable: bool = False, include_dirs: Optional[list] = None, abi3: bool = False) -> str:
     """Compile a .pa file. Returns the output path (or the IR text when emit_ir).
 
     dev : deep static lint of every imported .paw + full runtime boundary customs (element scans, big snapshots)
@@ -324,8 +324,12 @@ def compile_pa(path: str, out: Optional[str] = None, shared: bool = False, emit_
             f.write(ir_to_object(ir_text, compiler_kind=kind))
         objs = [obj, build_core(tmp, mode, kind, cc)]
         pyinfo = python_link_info() if (paws or shared) else {}
+        if shared and abi3 and sys.platform == "win32" and not paws and pyinfo.get("libdir"):
+            py3_lib = os.path.join(pyinfo["libdir"], "python3.lib")
+            if os.path.isfile(py3_lib):
+                pyinfo = dict(pyinfo, lib_file=py3_lib, lib_name="python3")
         if shared:
-            objs.append(build_wrappers(tmp, info, kind, cc, out_path=out, py_include=pyinfo.get("include", "")))
+            objs.append(build_wrappers(tmp, info, kind, cc, out_path=out, py_include=pyinfo.get("include", ""), abi3=abi3))
         if paws:
             objs.append(build_bridge(tmp, mode, pyinfo["include"], kind, cc))
             objs.append(build_embed(tmp, info, python_home, python_path, relocatable, kind, cc))
@@ -359,7 +363,7 @@ def _pyext_mod_name(out_path: str) -> str:
     return base if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", base) else ""
 
 
-def _pyext_source(info, mod_name: str) -> list[str]:
+def _pyext_source(info, mod_name: str, abi3: bool = False) -> list[str]:
     """Generate CPython PyInit_<mod_name> wrapper methods so `import <mod_name>` works with zero ctypes."""
     from .types import BOOL, F32, F64, I32, I64, STR_VIEW, U8, U32, U64, VOID, Span, resolve
     scalars = (I32, I64, U8, U32, U64, F32, F64, BOOL)
@@ -370,6 +374,7 @@ def _pyext_source(info, mod_name: str) -> list[str]:
         return rt in scalars or rt == STR_VIEW or (isinstance(rt, Span) and resolve(rt.elem) in scalars)
 
     lines = [
+        *(["#define Py_LIMITED_API 0x030B0000"] if abi3 else []),
         "#define PY_SSIZE_T_CLEAN",
         "#include <Python.h>",
         "extern int32_t pa_error_code(void);",
@@ -461,7 +466,7 @@ def _pyext_source(info, mod_name: str) -> list[str]:
     return lines
 
 
-def wrapper_source(info, py_mod_name: str = "") -> str:
+def wrapper_source(info, py_mod_name: str = "", abi3: bool = False) -> str:
     """C wrappers for @export functions: guard (setjmp) + optional CPython PyInit_<mod> for direct `import`."""
     out = [
         "#include <setjmp.h>",
@@ -514,11 +519,11 @@ def wrapper_source(info, py_mod_name: str = "") -> str:
             ]
         out += body + ["}"]
     if py_mod_name:
-        out += _pyext_source(info, py_mod_name)
+        out += _pyext_source(info, py_mod_name, abi3=abi3)
     return "\n".join(out) + "\n"
 
 
-def build_wrappers(tmp: str, info, kind: str = "", cc: str = "", out_path: str = "", py_include: str = "") -> str:
+def build_wrappers(tmp: str, info, kind: str = "", cc: str = "", out_path: str = "", py_include: str = "", abi3: bool = False) -> str:
     if not cc:
         kind, cc = find_c_compiler()
     ext = ".obj" if sys.platform == "win32" else ".o"
@@ -526,7 +531,7 @@ def build_wrappers(tmp: str, info, kind: str = "", cc: str = "", out_path: str =
     has_py_h = bool(py_include and os.path.isfile(os.path.join(py_include, "Python.h")))
     py_mod_name = _pyext_mod_name(out_path) if has_py_h else ""
     with open(src, "w", encoding="utf-8") as f:
-        f.write(wrapper_source(info, py_mod_name=py_mod_name))
+        f.write(wrapper_source(info, py_mod_name=py_mod_name, abi3=abi3))
     _compile_c(kind, cc, src, obj, includes=[py_include] if py_mod_name else ())
     return obj
 

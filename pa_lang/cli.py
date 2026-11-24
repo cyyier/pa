@@ -41,7 +41,7 @@ def cmd_build(args) -> int:
     try:
         out = compile_pa(args.file, out=args.output, shared=args.shared, emit_ir=args.emit_ir, mode=args.mode,
                          python_home=args.python_home, python_path=args.python_path or None,
-                         relocatable=args.relocatable, include_dirs=args.include or None)
+                         relocatable=args.relocatable, include_dirs=args.include or None, abi3=args.abi3)
     except BuildError as e:
         print(e, file=sys.stderr)
         return 1
@@ -134,6 +134,8 @@ def main(argv=None) -> int:
     b.add_argument("--python-path", action="append", help="default sys.path entry baked as a fallback (repeatable; PA_PYPATH overrides)")
     b.add_argument("--relocatable", action="store_true", help="bake no Python paths at all (rely on PA_PYTHON_HOME / PA_PYPATH / VIRTUAL_ENV)")
     b.add_argument("--shared", action="store_true", help="build a shared library of @export functions")
+    b.add_argument("--abi3", action="store_true",
+                   help="with --shared, target CPython Limited API (cp311-abi3, Py_LIMITED_API=0x030B0000)")
     b.add_argument("--emit-ir", action="store_true", help="print LLVM IR instead of linking")
     b.set_defaults(fn=cmd_build)
     r = sub.add_parser("run", help="compile a .pa file to a temp dir, execute it, and clean up")
