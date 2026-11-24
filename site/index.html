@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pa — Python syntax. Native C++ speed.</title>
+  <title>Pa Language — The AI-Native Systems Language</title>
   <link rel="icon" type="image/png" href="Pa.png" />
   <link rel="apple-touch-icon" href="Pa.png" />
   <meta
     name="description"
-    content="Pa is a statically compiled systems language with Python syntax, contiguous C++ memory layout, LLVM native codegen, and typed .paw Python bridges."
+    content="Pa Language — The AI-Native Systems Language. Written by AI, auditable by humans, compiled to native C++ speed with two-way Python interop, deterministic JSON diagnostics, and flat RAII memory."
   />
 
   <!-- Fonts: Inter + JetBrains Mono -->
@@ -189,16 +189,15 @@
               <span>Open Source · MIT License · Linux · macOS · Windows</span>
             </div>
 
-            <h1 class="text-4xl sm:text-[44px] font-semibold tracking-tight leading-[1.08] text-ink-primary">
-              Python syntax.<br />
-              <span class="text-ink-secondary">Native C++ speed.</span>
+            <h1 class="text-4xl sm:text-[42px] font-semibold tracking-tight leading-[1.08] text-ink-primary">
+              Pa Language —<br />
+              <span class="text-ink-secondary">The AI-Native Systems Language.</span>
             </h1>
 
             <p class="mt-5 text-[15px] leading-relaxed text-ink-secondary max-w-md">
-              A statically compiled systems language built on LLVM. Zero type annotations in
-              function bodies, contiguous RAII memory without a GC, and typed
-              <code class="font-mono text-xs text-ink-primary bg-surface border hairline px-1 py-0.5 rounded">.paw</code>
-              bridges to the Python ecosystem.
+              Written by AI, effortlessly reviewed by humans, compiled straight to native C++ speed.
+              Deterministic JSON diagnostics eliminate agent retry loops — slashing token spend and
+              retry latency.
             </p>
 
             <!-- Interactive Terminal Install Box -->
@@ -234,10 +233,19 @@
                 <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
               </a>
               <a
-                href="architecture.html"
+                href="https://github.com/cyyier/pa"
+                target="_blank"
+                rel="noopener noreferrer"
                 class="inline-flex items-center gap-2 border hairline bg-surface hover:bg-white/[0.04] text-ink-primary font-mono text-xs px-3.5 py-2.5 rounded-md transition-colors"
               >
-                <span>Architecture Spec</span>
+                <i data-lucide="star" class="w-3.5 h-3.5 text-ink-muted"></i>
+                <span>GitHub</span>
+              </a>
+              <a
+                href="architecture.html"
+                class="inline-flex items-center gap-1.5 text-ink-secondary hover:text-ink-primary font-mono text-xs px-2 py-2.5 transition-colors"
+              >
+                <span>Architecture</span>
                 <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-ink-muted"></i>
               </a>
             </div>
@@ -326,319 +334,286 @@
       </div>
     </section>
 
-    <!-- 3. BENCHMARKS SECTION -->
-    <section id="benchmarks" class="border-b hairline">
+    <!-- 3. SECTION 01: AI-NATIVE BY DESIGN -->
+    <section id="ai-native" class="border-b hairline">
       <div class="max-w-6xl mx-auto px-6 py-20">
         <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
           <div>
-            <p class="font-mono text-[11px] uppercase tracking-wider text-ink-muted mb-2">
-              01 / Benchmarks
+            <p class="font-mono text-[11px] uppercase tracking-wider text-accent mb-2">
+              01 / AI-Native by Design
             </p>
             <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight leading-tight text-ink-primary">
-              Native speed &amp; memory footprint vs CPython 3.12 &amp; C++
+              1-Shot Repair. Zero retry loops.
             </h2>
           </div>
-          <p class="font-mono text-xs text-ink-secondary tabular-nums">
-            Differential-verified · Exact int/set · Float &Delta; &lt; 1e-9
+          <p class="font-mono text-xs text-ink-secondary">
+            Causal chains + deterministic patches · slash token &amp; compute spend
           </p>
         </div>
 
-        <!-- Benchmark Chart Card -->
-        <div class="bg-surface border hairline rounded-md overflow-hidden">
-          <!-- Table Header -->
-          <div class="px-5 py-3 border-b hairline bg-canvas flex items-center justify-between font-mono text-[11px] text-ink-muted">
-            <span>WORKLOAD (EXAMPLES/*)</span>
-            <div class="flex items-center gap-5">
-              <span class="inline-flex items-center gap-1.5 text-ink-primary">
-                <span class="w-2.5 h-2.5 rounded-sm bg-accent inline-block"></span>
-                Pa (LLVM -O2)
-              </span>
-              <span class="inline-flex items-center gap-1.5">
-                <span class="w-2.5 h-2.5 rounded-sm bg-zinc-800 inline-block"></span>
-                CPython 3.12 (1.0&times;)
-              </span>
+        <!-- Left / Right Comparison Card -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <!-- Left: .pa Code Triggering PA_E050 -->
+          <div class="lg:col-span-5 bg-surface border hairline rounded-md overflow-hidden flex flex-col">
+            <div class="px-4 py-2.5 border-b hairline bg-canvas flex items-center justify-between font-mono text-[11px] text-ink-muted">
+              <span class="text-ink-primary">pipeline.pa</span>
+              <span class="text-red-400">PA_E050 · borrow mismatch</span>
+            </div>
+            <pre class="p-4 sm:p-5 font-mono text-[12px] leading-[1.7] overflow-x-auto tabular-nums flex-1"><code><span class="text-ink-muted select-none mr-3">01</span><span class="tok-kw">def</span> <span class="tok-id">scale_in_place</span><span class="tok-op">(</span><span class="tok-id">xs</span><span class="tok-op">,</span> <span class="tok-id">k</span><span class="tok-op">) -&gt;</span> <span class="tok-id">void</span><span class="tok-op">:</span>
+<span class="text-ink-muted select-none mr-3">02</span>    <span class="tok-kw">for</span> <span class="tok-id">i</span> <span class="tok-kw">in</span> <span class="tok-id">range</span><span class="tok-op">(</span><span class="tok-id">len</span><span class="tok-op">(</span><span class="tok-id">xs</span><span class="tok-op">)):</span>
+<span class="text-ink-muted select-none mr-3">03</span>        <span class="tok-id">xs</span><span class="tok-op">[</span><span class="tok-id">i</span><span class="tok-op">] =</span> <span class="tok-id">xs</span><span class="tok-op">[</span><span class="tok-id">i</span><span class="tok-op">] *</span> <span class="tok-id">k</span>
+<span class="text-ink-muted select-none mr-3">04</span>
+<span class="text-ink-muted select-none mr-3">05</span><span class="tok-kw">def</span> <span class="tok-id">main</span><span class="tok-op">() -&gt;</span> <span class="tok-id">int</span><span class="tok-op">:</span>
+<span class="text-ink-muted select-none mr-3">06</span>    <span class="tok-id">series</span> <span class="tok-op">= [</span><span class="tok-id">1.0</span><span class="tok-op">,</span> <span class="tok-id">2.0</span><span class="tok-op">,</span> <span class="tok-id">3.0</span><span class="tok-op">]</span>
+<span class="block -mx-4 sm:-mx-5 px-4 sm:px-5 bg-red-500/10 border-l-2 border-red-400"><span class="text-red-400 select-none mr-3">07</span>    <span class="tok-id">scale_in_place</span><span class="tok-op">(</span><span class="tok-id">series</span><span class="tok-op">,</span> <span class="tok-id">2.0</span><span class="tok-op">)  </span><span class="tok-cm"># missing mut()</span></span><span class="text-ink-muted select-none mr-3">08</span>    <span class="tok-kw">return</span> <span class="tok-id">0</span></code></pre>
+            <div class="px-4 py-2.5 border-t hairline bg-canvas/70 font-mono text-[11px] text-ink-muted">
+              Prose errors force agents to guess across 3–6 turns. Pa hands over the exact fix.
             </div>
           </div>
 
-          <!-- Rows -->
-          <div class="divide-y divide-white/[0.08]">
-
-            <!-- Row 1: utm -->
-            <div class="px-5 py-4">
-              <div class="flex items-baseline justify-between gap-4 mb-2.5">
-                <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-                  <span class="font-mono text-xs font-semibold text-ink-primary">utm</span>
-                  <span class="text-xs text-ink-secondary">WGS84 Transverse Mercator, libm, special-zone branching · 100k points</span>
-                </div>
-                <span class="font-mono text-xs font-semibold tabular-nums text-accent shrink-0">~210&times;</span>
-              </div>
-              <div class="space-y-1.5">
-                <div class="flex items-center gap-3">
-                  <div class="flex-1 h-2 bg-canvas rounded-sm overflow-hidden">
-                    <div class="h-full bg-accent rounded-sm" style="width: 100%"></div>
-                  </div>
-                  <span class="w-24 text-right font-mono text-[11px] tabular-nums text-ink-primary">165–250&times;</span>
-                </div>
-                <div class="flex items-center gap-3">
-                  <div class="flex-1 h-2 bg-canvas rounded-sm overflow-hidden">
-                    <div class="h-full bg-zinc-800 rounded-sm" style="width: 1.5%"></div>
-                  </div>
-                  <span class="w-24 text-right font-mono text-[11px] tabular-nums text-ink-muted">1.0&times;</span>
-                </div>
-              </div>
+          <!-- Right: Structured JSON Repair Ticket -->
+          <div class="lg:col-span-7 bg-surface border hairline rounded-md overflow-hidden flex flex-col">
+            <div class="px-4 py-2.5 border-b hairline bg-canvas flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] text-ink-muted">
+              <span class="text-ink-primary">$ pac check --ai-diagnostic pipeline.pa</span>
+              <span class="text-accent">1-shot JSON repair ticket</span>
             </div>
-
-            <!-- Row 2: benchmark -->
-            <div class="px-5 py-4">
-              <div class="flex items-baseline justify-between gap-4 mb-2.5">
-                <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-                  <span class="font-mono text-xs font-semibold text-ink-primary">benchmark</span>
-                  <span class="text-xs text-ink-secondary">50M-iteration 64-bit LCG integer &amp; Leibniz float loops</span>
-                </div>
-                <span class="font-mono text-xs font-semibold tabular-nums text-accent shrink-0">~110&times;</span>
-              </div>
-              <div class="space-y-1.5">
-                <div class="flex items-center gap-3">
-                  <div class="flex-1 h-2 bg-canvas rounded-sm overflow-hidden">
-                    <div class="h-full bg-accent rounded-sm" style="width: 52.4%"></div>
-                  </div>
-                  <span class="w-24 text-right font-mono text-[11px] tabular-nums text-ink-primary">110&times;</span>
-                </div>
-                <div class="flex items-center gap-3">
-                  <div class="flex-1 h-2 bg-canvas rounded-sm overflow-hidden">
-                    <div class="h-full bg-zinc-800 rounded-sm" style="width: 1.5%"></div>
-                  </div>
-                  <span class="w-24 text-right font-mono text-[11px] tabular-nums text-ink-muted">1.0&times;</span>
-                </div>
-              </div>
+            <pre class="p-4 sm:p-5 font-mono text-[11.5px] leading-[1.65] overflow-x-auto tabular-nums flex-1"><code><span class="tok-op">[{</span>
+  <span class="tok-kw">"code"</span><span class="tok-op">:</span> <span class="tok-id">"PA_E050"</span><span class="tok-op">,</span>
+  <span class="tok-kw">"skill_rule_ref"</span><span class="tok-op">:</span> <span class="tok-id">"pa-coder#borrowing"</span><span class="tok-op">,</span>
+  <span class="tok-kw">"location"</span><span class="tok-op">:</span> <span class="tok-id">"pipeline.pa:7:5"</span><span class="tok-op">,</span>
+  <span class="tok-kw">"causal_chain"</span><span class="tok-op">: [</span>
+    <span class="tok-id">"scale_in_place() writes to 'xs' at line 3"</span><span class="tok-op">,</span>
+    <span class="tok-id">"default container borrow is read-only (const T&amp;)"</span>
+  <span class="tok-op">],</span>
+  <span class="tok-kw">"repair_plan"</span><span class="tok-op">: {</span>
+    <span class="tok-kw">"strategy"</span><span class="tok-op">:</span> <span class="tok-id">"wrap_mut_borrow"</span><span class="tok-op">,</span>
+    <span class="tok-kw">"suggested_patches"</span><span class="tok-op">: [{</span>
+      <span class="tok-id">"line"</span><span class="tok-op">:</span> <span class="tok-id">7</span><span class="tok-op">,</span> <span class="tok-id">"original"</span><span class="tok-op">:</span> <span class="tok-id">"series"</span><span class="tok-op">,</span> <span class="tok-id">"replacement"</span><span class="tok-op">:</span> <span class="tok-id">"mut(series)"</span>
+    <span class="tok-op">}]</span>
+  <span class="tok-op">}</span>
+<span class="tok-op">}]</span></code></pre>
+            <div class="px-4 py-2.5 border-t hairline bg-canvas/70 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] text-ink-muted">
+              <span>Also emits auto-fix patches for <span class="text-ink-secondary">@struct</span> layouts and type mismatches</span>
+              <span class="text-accent">exit 1 · 1 ticket</span>
             </div>
-
-            <!-- Row 3: levenshtein -->
-            <div class="px-5 py-4">
-              <div class="flex items-baseline justify-between gap-4 mb-2.5">
-                <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-                  <span class="font-mono text-xs font-semibold text-ink-primary">levenshtein</span>
-                  <span class="text-xs text-ink-secondary">UTF-8 byte spans, rolling arrays, flattened 2-D DP, String RAII · 50k pairs</span>
-                </div>
-                <span class="font-mono text-xs font-semibold tabular-nums text-accent shrink-0">~80&times;</span>
-              </div>
-              <div class="space-y-1.5">
-                <div class="flex items-center gap-3">
-                  <div class="flex-1 h-2 bg-canvas rounded-sm overflow-hidden">
-                    <div class="h-full bg-accent rounded-sm" style="width: 38.1%"></div>
-                  </div>
-                  <span class="w-24 text-right font-mono text-[11px] tabular-nums text-ink-primary">65–95&times;</span>
-                </div>
-                <div class="flex items-center gap-3">
-                  <div class="flex-1 h-2 bg-canvas rounded-sm overflow-hidden">
-                    <div class="h-full bg-zinc-800 rounded-sm" style="width: 1.5%"></div>
-                  </div>
-                  <span class="w-24 text-right font-mono text-[11px] tabular-nums text-ink-muted">1.0&times;</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Row 4: kdtree -->
-            <div class="px-5 py-4">
-              <div class="flex items-baseline justify-between gap-4 mb-2.5">
-                <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-                  <span class="font-mono text-xs font-semibold text-ink-primary">kdtree</span>
-                  <span class="text-xs text-ink-secondary">Recursion, nested @struct AoS, manual-stack search, PIL render via .paw</span>
-                </div>
-                <span class="font-mono text-xs font-semibold tabular-nums text-accent shrink-0">~26&times;</span>
-              </div>
-              <div class="space-y-1.5">
-                <div class="flex items-center gap-3">
-                  <div class="flex-1 h-2 bg-canvas rounded-sm overflow-hidden">
-                    <div class="h-full bg-accent rounded-sm" style="width: 12.4%"></div>
-                  </div>
-                  <span class="w-24 text-right font-mono text-[11px] tabular-nums text-ink-primary">22–29&times;</span>
-                </div>
-                <div class="flex items-center gap-3">
-                  <div class="flex-1 h-2 bg-canvas rounded-sm overflow-hidden">
-                    <div class="h-full bg-zinc-800 rounded-sm" style="width: 1.5%"></div>
-                  </div>
-                  <span class="w-24 text-right font-mono text-[11px] tabular-nums text-ink-muted">1.0&times;</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Row 5: delaunator -->
-            <div class="px-5 py-4">
-              <div class="flex items-baseline justify-between gap-4 mb-2.5">
-                <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-                  <span class="font-mono text-xs font-semibold text-ink-primary">delaunator</span>
-                  <span class="text-xs text-ink-secondary">Dynamic Vec growth, while loops, half-edge index jumps</span>
-                </div>
-                <span class="font-mono text-xs font-semibold tabular-nums text-accent shrink-0">~17&times;</span>
-              </div>
-              <div class="space-y-1.5">
-                <div class="flex items-center gap-3">
-                  <div class="flex-1 h-2 bg-canvas rounded-sm overflow-hidden">
-                    <div class="h-full bg-accent rounded-sm" style="width: 8.1%"></div>
-                  </div>
-                  <span class="w-24 text-right font-mono text-[11px] tabular-nums text-ink-primary">17&times;</span>
-                </div>
-                <div class="flex items-center gap-3">
-                  <div class="flex-1 h-2 bg-canvas rounded-sm overflow-hidden">
-                    <div class="h-full bg-zinc-800 rounded-sm" style="width: 1.5%"></div>
-                  </div>
-                  <span class="w-24 text-right font-mono text-[11px] tabular-nums text-ink-muted">1.0&times;</span>
-                </div>
-              </div>
-            </div>
-
-          </div>
-
-          <!-- Footnote -->
-          <div class="px-5 py-3 border-t hairline bg-canvas font-mono text-[11px] text-ink-muted flex flex-wrap items-center justify-between gap-2">
-            <span>Higher is faster. Measured on Linux x86-64 via <span class="text-ink-secondary">examples/*/verify_*.py</span>.</span>
-            <span>Pure .pa binaries link zero libpython.</span>
           </div>
         </div>
 
-        <!-- Memory Footprint & Native Speed Table (vs Python & C++ -O2) -->
-        <div class="mt-8 bg-surface border hairline rounded-md overflow-hidden">
-          <div class="px-5 py-3.5 border-b hairline bg-canvas flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p class="font-mono text-[11px] uppercase tracking-wider text-ink-primary font-semibold">
-                Memory Footprint &amp; Native Speed (--mode prod · Linux x86-64 Peak RSS)
-              </p>
-              <p class="text-xs text-ink-secondary mt-1">
-                Zero <code class="font-mono text-ink-primary">PyObject*</code> boxing, zero GC overhead, and contiguous C-layout buffers (<span class="font-mono text-ink-primary">8 B</span> per <code class="font-mono text-ink-primary">float64</code> vs ~32–40 B in Python <code class="font-mono text-ink-primary">list</code>).
-              </p>
-            </div>
-            <span class="font-mono text-[11px] text-accent border hairline bg-surface px-2 py-0.5 rounded shrink-0">
-              vs CPython 3.12 &amp; g++ -O2
-            </span>
-          </div>
+        <!-- 3 AI-Native Value Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+          <article class="bg-surface border hairline rounded-md p-5">
+            <div class="font-mono text-[11px] text-accent mb-2">TOKEN &amp; COMPUTE SAVINGS</div>
+            <h3 class="text-sm font-semibold text-ink-primary">No more prose-error guessing loops</h3>
+            <p class="mt-2 text-xs leading-relaxed text-ink-secondary">
+              Traditional compilers emit human prose that traps coding agents in multi-turn retry loops.
+              Pa&rsquo;s structured causal chains and deterministic patches enable <strong class="text-ink-primary">1-shot repair</strong>,
+              cutting LLM token spend, API cost, and wall-clock latency.
+            </p>
+          </article>
 
-          <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr class="border-b hairline bg-canvas/60 font-mono text-[11px] text-ink-muted uppercase tracking-wider">
-                  <th class="px-5 py-3 font-medium">Workload</th>
-                  <th class="px-4 py-3 font-medium text-right">Pa Time</th>
-                  <th class="px-4 py-3 font-medium text-right">Baseline Time</th>
-                  <th class="px-4 py-3 font-medium text-right">Pa Peak RSS</th>
-                  <th class="px-4 py-3 font-medium text-right">Baseline RSS</th>
-                  <th class="px-5 py-3 font-medium text-right">Memory Advantage</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-white/[0.08] font-mono tabular-nums">
-                <tr>
-                  <td class="px-5 py-3.5 font-sans">
-                    <div class="font-medium text-ink-primary">5M-Float Sliding Window</div>
-                    <div class="text-[11px] text-ink-muted font-mono">10M float64 total = 76.29 MB raw · vs Python list</div>
-                  </td>
-                  <td class="px-4 py-3.5 text-right text-ink-primary font-semibold">49.5 ms</td>
-                  <td class="px-4 py-3.5 text-right text-ink-secondary">1,545.9 ms <span class="text-ink-muted">(31&times;)</span></td>
-                  <td class="px-4 py-3.5 text-right text-accent font-semibold">78.11 MB</td>
-                  <td class="px-4 py-3.5 text-right text-ink-secondary">397.68 MB</td>
-                  <td class="px-5 py-3.5 text-right text-accent font-semibold">5.1&times; smaller <span class="text-ink-muted font-normal">(~0 MB overhead)</span></td>
-                </tr>
-                <tr>
-                  <td class="px-5 py-3.5 font-sans">
-                    <div class="font-medium text-ink-primary">CRC-32 + SHA-256 Hashing</div>
-                    <div class="text-[11px] text-ink-muted font-mono">100 KB &times; 50 / &times; 20 · vs Pure Python</div>
-                  </td>
-                  <td class="px-4 py-3.5 text-right text-ink-primary font-semibold">35.5 ms</td>
-                  <td class="px-4 py-3.5 text-right text-ink-secondary">~2,000 ms <span class="text-ink-muted">(~55&times;)</span></td>
-                  <td class="px-4 py-3.5 text-right text-accent font-semibold">2.67 MB</td>
-                  <td class="px-4 py-3.5 text-right text-ink-secondary">21.1 MB</td>
-                  <td class="px-5 py-3.5 text-right text-accent font-semibold">7.9&times; smaller</td>
-                </tr>
-                <tr>
-                  <td class="px-5 py-3.5 font-sans">
-                    <div class="font-medium text-ink-primary">Raytracer (C++ Port)</div>
-                    <div class="text-[11px] text-ink-muted font-mono">400&times;225 &times; 24 SPP · vs g++ -O2 ref_rt.cpp</div>
-                  </td>
-                  <td class="px-4 py-3.5 text-right text-ink-primary font-semibold">795.4 ms</td>
-                  <td class="px-4 py-3.5 text-right text-ink-secondary">531.5 ms <span class="text-ink-muted">(C++ -O2)</span></td>
-                  <td class="px-4 py-3.5 text-right text-accent font-semibold">2.10 MB</td>
-                  <td class="px-4 py-3.5 text-right text-ink-secondary">4.25 MB <span class="text-ink-muted">(C++ -O2)</span></td>
-                  <td class="px-5 py-3.5 text-right text-accent font-semibold">2.0&times; smaller than g++ -O2</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <article class="bg-surface border hairline rounded-md p-5">
+            <div class="font-mono text-[11px] text-accent mb-2">BUILT-IN AGENT SKILLS</div>
+            <h3 class="text-sm font-semibold text-ink-primary">One-command skill packs</h3>
+            <p class="mt-2 text-xs leading-relaxed text-ink-secondary">
+              Ships with <code class="font-mono text-ink-primary">pa-coder</code>,
+              <code class="font-mono text-ink-primary">py-to-pa</code>, and
+              <code class="font-mono text-ink-primary">cpp-to-pa</code>. Install into Claude, Cursor,
+              Codex, or Copilot with <code class="font-mono text-ink-primary">pac skill --install</code>.
+            </p>
+          </article>
 
-          <div class="px-5 py-3 border-t hairline bg-canvas font-mono text-[11px] text-ink-muted flex flex-wrap items-center justify-between gap-2">
-            <span>All pure-native benchmarks measured via <span class="text-ink-secondary">/usr/bin/time -v</span> without embedded CPython bridges.</span>
-            <span>Raytracer matches <span class="text-ink-secondary">g++ -O2</span> pixel-for-pixel via <span class="text-ink-secondary">uint64</span> xorshift64*.</span>
-          </div>
+          <article class="bg-surface border hairline rounded-md p-5">
+            <div class="font-mono text-[11px] text-accent mb-2">REPLAYABLE FAULT SNAPSHOTS</div>
+            <h3 class="text-sm font-semibold text-ink-primary">Deterministic boundary debugging</h3>
+            <p class="mt-2 text-xs leading-relaxed text-ink-secondary">
+              Any <code class="font-mono text-ink-primary">.paw</code> <code class="font-mono text-ink-primary">None</code>,
+              <code class="font-mono text-ink-primary">NaN</code>, or type drift writes
+              <code class="font-mono text-ink-primary">pa_boundary_fault.json</code> with a full
+              <code class="font-mono text-ink-primary">in_payload_snapshot</code> for instant agent replay.
+            </p>
+          </article>
         </div>
       </div>
     </section>
 
-    <!-- 4. ASYMMETRIC ENGINEERING BENTO GRID -->
-    <section id="architecture" class="border-b hairline">
+    <!-- 4. SECTION 02: SEAMLESS TWO-WAY PYTHON INTEROP -->
+    <section id="interop" class="border-b hairline">
       <div class="max-w-6xl mx-auto px-6 py-20">
-        <div class="mb-10">
-          <p class="font-mono text-[11px] uppercase tracking-wider text-ink-muted mb-2">
-            02 / Architecture &amp; Tooling
+        <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
+          <div>
+            <p class="font-mono text-[11px] uppercase tracking-wider text-accent mb-2">
+              02 / Two-Way Python Interop
+            </p>
+            <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight leading-tight text-ink-primary">
+              Zero cold-start. Call Python, or ship native <code class="font-mono text-accent">.so</code> to Python.
+            </h2>
+          </div>
+          <p class="font-mono text-xs text-ink-secondary">
+            Zero-copy <code class="text-ink-primary">PyBUF_READ</code> in · Guarded C-ABI <code class="text-ink-primary">--shared</code> out
           </p>
-          <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight leading-tight text-ink-primary">
-            Written by AI. Auditable by humans.
-          </h2>
         </div>
 
-        <!-- Asymmetric 12-column Bento Grid (7+5, then 5+7) -->
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <!-- Left Card: Pa -> Python (.paw) -->
+          <article class="bg-surface border hairline rounded-md p-6 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between gap-2 mb-3">
+                <span class="font-mono text-[11px] text-accent">PA &rarr; PYTHON · .PAW BRIDGE</span>
+                <span class="font-mono text-[11px] text-ink-secondary border hairline bg-canvas px-2 py-0.5 rounded">
+                  zero-copy PyBUF_READ
+                </span>
+              </div>
+              <h3 class="text-lg font-semibold tracking-tight text-ink-primary">
+                Use NumPy, PyTorch &amp; SQLite without rewriting your stack
+              </h3>
+              <p class="mt-2 text-sm leading-relaxed text-ink-secondary">
+                Call any Python library directly from <code class="font-mono text-xs text-ink-primary">.pa</code>
+                through locked <code class="font-mono text-xs text-ink-primary">.paw</code> headers.
+                Arrays cross inbound as read-only zero-copy
+                <code class="font-mono text-xs text-ink-primary">memoryview</code>
+                (<code class="font-mono text-xs text-ink-primary">PyBUF_READ</code>), while outbound
+                <code class="font-mono text-xs text-ink-primary">None</code>,
+                <code class="font-mono text-xs text-ink-primary">NaN</code>, or type drift traps cleanly
+                into <code class="font-mono text-xs text-ink-primary">pa_boundary_fault.json</code>.
+              </p>
+            </div>
 
-          <!-- BENTO 1 (7 cols): Readable Python Syntax + Inferred C++ Memory Layout -->
+            <div class="mt-5 bg-canvas border hairline rounded-md overflow-hidden">
+              <div class="px-3.5 py-2 border-b hairline flex items-center justify-between font-mono text-[11px] text-ink-muted">
+                <span>bridge.paw &rarr; numpy / torch / sqlite3</span>
+                <span class="text-[#5EEAD4]">locked In &rarr; Out</span>
+              </div>
+              <pre class="p-3.5 font-mono text-[11.5px] leading-[1.65] overflow-x-auto tabular-nums"><code><span class="tok-kw">import</span> <span class="tok-id">sqlite3</span><span class="tok-op">,</span> <span class="tok-id">zlib</span><span class="tok-op">,</span> <span class="tok-id">numpy</span> <span class="tok-kw">as</span> <span class="tok-id">np</span>
+
+<span class="tok-kw">def</span> <span class="tok-id">score_and_store</span><span class="tok-op">(</span><span class="tok-id">xs</span><span class="tok-op">:</span> <span class="tok-id">span</span><span class="tok-op">[</span><span class="tok-id">float</span><span class="tok-op">]) -&gt;</span> <span class="tok-id">float</span><span class="tok-op">:</span>
+    <span class="tok-cm"># Zero-copy read-only view over Pa's contiguous Vec&lt;float&gt;</span>
+    <span class="tok-id">arr</span> <span class="tok-op">=</span> <span class="tok-id">np</span><span class="tok-op">.</span><span class="tok-id">frombuffer</span><span class="tok-op">(</span><span class="tok-id">xs</span><span class="tok-op">,</span> <span class="tok-id">dtype</span><span class="tok-op">=</span><span class="tok-id">np</span><span class="tok-op">.</span><span class="tok-id">float64</span><span class="tok-op">)</span>
+    <span class="tok-kw">return</span> <span class="tok-id">float</span><span class="tok-op">(</span><span class="tok-id">np</span><span class="tok-op">.</span><span class="tok-id">percentile</span><span class="tok-op">(</span><span class="tok-id">arr</span><span class="tok-op">,</span> <span class="tok-id">95.0</span><span class="tok-op">))</span></code></pre>
+            </div>
+          </article>
+
+          <!-- Right Card: Python -> Pa (pip install native .so) -->
+          <article class="bg-surface border hairline rounded-md p-6 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between gap-2 mb-3">
+                <span class="font-mono text-[11px] text-[#5EEAD4]">PYTHON &rarr; PA · NATIVE .SO LIBS</span>
+                <span class="font-mono text-[11px] text-ink-secondary border hairline bg-canvas px-2 py-0.5 rounded">
+                  0 PyObject* C ABI
+                </span>
+              </div>
+              <h3 class="text-lg font-semibold tracking-tight text-ink-primary">
+                Compile hot kernels into <code class="font-mono text-base">pip install</code>-ready <code class="font-mono text-base">.so</code> libs
+              </h3>
+              <p class="mt-2 text-sm leading-relaxed text-ink-secondary">
+                Compile <code class="font-mono text-xs text-ink-primary">@export</code> functions with
+                <code class="font-mono text-xs text-ink-primary">pac build --shared</code> into standard
+                C-ABI <code class="font-mono text-xs text-ink-primary">.so</code> / <code class="font-mono text-xs text-ink-primary">.dylib</code> / <code class="font-mono text-xs text-ink-primary">.dll</code>
+                libraries with zero <code class="font-mono text-xs text-ink-primary">PyObject*</code>
+                dependency. Ship drop-in <code class="font-mono text-xs text-ink-primary">pip install</code>
+                acceleration packages or repackage your
+                own Python hot loops via <code class="font-mono text-xs text-ink-primary">ctypes</code>.
+              </p>
+            </div>
+
+            <div class="mt-5 bg-canvas border hairline rounded-md overflow-hidden">
+              <div class="px-3.5 py-2 border-b hairline flex items-center justify-between font-mono text-[11px] text-ink-muted">
+                <span>$ pac build --shared kernel.pa -o libpa_kernel.so</span>
+                <span class="text-accent">setjmp guarded</span>
+              </div>
+              <pre class="p-3.5 font-mono text-[11.5px] leading-[1.65] overflow-x-auto tabular-nums"><code><span class="tok-kw">import</span> <span class="tok-id">ctypes</span>
+
+<span class="tok-id">lib</span> <span class="tok-op">=</span> <span class="tok-id">ctypes</span><span class="tok-op">.</span><span class="tok-id">CDLL</span><span class="tok-op">(</span><span class="tok-id">"./libpa_kernel.so"</span><span class="tok-op">)</span>
+<span class="tok-id">lib</span><span class="tok-op">.</span><span class="tok-id">batch_checksum</span><span class="tok-op">.</span><span class="tok-id">restype</span> <span class="tok-op">=</span> <span class="tok-id">ctypes</span><span class="tok-op">.</span><span class="tok-id">c_double</span>
+<span class="tok-id">res</span> <span class="tok-op">=</span> <span class="tok-id">lib</span><span class="tok-op">.</span><span class="tok-id">batch_checksum</span><span class="tok-op">(</span><span class="tok-id">2000</span><span class="tok-op">,</span> <span class="tok-id">13</span><span class="tok-op">,</span> <span class="tok-id">1</span><span class="tok-op">)</span>
+<span class="tok-kw">assert</span> <span class="tok-id">lib</span><span class="tok-op">.</span><span class="tok-id">pa_error_code</span><span class="tok-op">() ==</span> <span class="tok-id">0</span>  <span class="tok-cm"># host never crashes</span></code></pre>
+            </div>
+            <p class="mt-3 text-[11px] text-ink-muted">
+              Need to wrap an existing <code class="font-mono text-ink-secondary">.so</code> or hot loop?
+              <a href="quickstart.html#shipping" class="text-ink-secondary underline hover:text-ink-primary transition-colors">See the Self-Wrap Template in Quickstart</a>.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. SECTION 03: HUMAN-AUDITABLE CLARITY -->
+    <section id="auditable" class="border-b hairline">
+      <div class="max-w-6xl mx-auto px-6 py-20">
+        <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
+          <div>
+            <p class="font-mono text-[11px] uppercase tracking-wider text-ink-muted mb-2">
+              03 / Human-Auditable Clarity
+            </p>
+            <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight leading-tight text-ink-primary">
+              Python readability. Flat C++ layout.
+            </h2>
+          </div>
+          <p class="font-mono text-xs text-ink-secondary">
+            Zero-annotation function bodies · Zero-GC RAII · Isolated <code class="text-ink-primary">.paw</code> wall
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <!-- Left (7 cols): Zero-Annotation Readability + Live LSP Hover Screenshot -->
           <article class="lg:col-span-7 bg-surface border hairline rounded-md p-6 flex flex-col justify-between">
             <div>
               <div class="flex items-center justify-between gap-2 mb-3">
-                <span class="font-mono text-[11px] text-ink-muted">01 · SYNTAX &amp; MEMORY</span>
+                <span class="font-mono text-[11px] text-ink-muted">ZERO-ANNOTATION BODIES</span>
                 <span class="font-mono text-[11px] text-ink-secondary border hairline bg-canvas px-2 py-0.5 rounded">
                   ≤ 40 lines/fn · complexity ≤ 8
                 </span>
               </div>
               <h3 class="text-lg font-semibold tracking-tight text-ink-primary">
-                Python readability with flat C++ layout
+                Clean Python syntax with zero lifetime or generic noise
               </h3>
               <p class="mt-2 text-sm leading-relaxed text-ink-secondary">
                 Every <code class="font-mono text-xs text-ink-primary">.pa</code> file parses with
                 standard <code class="font-mono text-xs text-ink-primary">ast.parse</code>.
-                Function bodies stay free of type noise while bidirectional inference and escape
-                analysis place lists on the stack (<code class="font-mono text-xs text-ink-primary">[N x T]</code>)
-                or RAII-managed heap (<code class="font-mono text-xs text-ink-primary">{T*, len, cap}</code>).
+                Human reviewers read pure logic and data flow at a glance—no lifetime sigils, no
+                template walls—while hover cards in VS Code reveal exact LLVM layout, byte size,
+                stride, and RAII ownership on demand.
               </p>
             </div>
 
-            <!-- LSP Inlay Hints & Hover Memory-Audit Screenshot -->
+            <!-- Real VS Code pac lsp Hover Memory-Audit Screenshot -->
             <div class="mt-6 bg-canvas border hairline rounded-md overflow-hidden">
               <div class="px-3.5 py-2 border-b hairline flex items-center justify-between font-mono text-[11px] text-ink-muted">
-                <span>pac lsp · live inlay hints &amp; hover memory audit</span>
+                <span>pac lsp · hover memory-audit card</span>
                 <span>0 PyObject*</span>
               </div>
               <img
                 src="lsp-hover.png"
-                alt="VS Code Pa Language Server showing inferred-type inlay hints and hover memory-audit card with LLVM layout, byte size, element stride, storage strategy, and cyclomatic complexity"
+                alt="VS Code Pa Language Server showing hover memory-audit card with LLVM layout, byte size, element stride, storage strategy, and cyclomatic complexity"
                 class="w-full h-auto block"
                 loading="lazy"
               />
             </div>
           </article>
 
-          <!-- BENTO 2 (5 cols): Compiler Pipeline SVG -->
+          <!-- Right (5 cols): Deterministic RAII + .paw Isolation Wall + Compiler Pipeline SVG -->
           <article class="lg:col-span-5 bg-surface border hairline rounded-md p-6 flex flex-col justify-between">
-            <div>
-              <div class="flex items-center justify-between gap-2 mb-3">
-                <span class="font-mono text-[11px] text-ink-muted">02 · COMPILER PIPELINE</span>
-                <span class="font-mono text-[11px] text-ink-secondary border hairline bg-canvas px-2 py-0.5 rounded">
-                  llvmlite · C ABI
-                </span>
+            <div class="space-y-4">
+              <div>
+                <div class="flex items-center justify-between gap-2 mb-3">
+                  <span class="font-mono text-[11px] text-ink-muted">RAII &amp; .PAW ISOLATION WALL</span>
+                  <span class="font-mono text-[11px] text-ink-secondary border hairline bg-canvas px-2 py-0.5 rounded">
+                    LLVM -O2 · C ABI
+                  </span>
+                </div>
+                <h3 class="text-lg font-semibold tracking-tight text-ink-primary">
+                  Deterministic memory &amp; auditable Python boundaries
+                </h3>
+                <p class="mt-2 text-sm leading-relaxed text-ink-secondary">
+                  Bidirectional inference places containers on the stack
+                  (<code class="font-mono text-xs text-ink-primary">[N x T]</code>), RAII heap
+                  (<code class="font-mono text-xs text-ink-primary">Vec[T]</code>), or flat CSR
+                  (<code class="font-mono text-xs text-ink-primary">Vec[Vec[T]]</code>) with zero GC
+                  pauses. All third-party Python dependencies (<code class="font-mono text-xs text-ink-primary">numpy</code>,
+                  <code class="font-mono text-xs text-ink-primary">PIL</code>,
+                  <code class="font-mono text-xs text-ink-primary">sqlite3</code>) stay fenced behind
+                  typed <code class="font-mono text-xs text-ink-primary">.paw</code> headers.
+                </p>
               </div>
-              <h3 class="text-lg font-semibold tracking-tight text-ink-primary">
-                Native binaries &amp; guarded shared libs
-              </h3>
-              <p class="mt-2 text-sm leading-relaxed text-ink-secondary">
-                Direct AST lowering to LLVM IR with <code class="font-mono text-xs text-ink-primary">-O2</code>.
-                Ship standalone ELF / Mach-O / PE executables or <code class="font-mono text-xs text-ink-primary">--shared</code>
-                libraries with <code class="font-mono text-xs text-ink-primary">setjmp</code> fault guards.
-              </p>
             </div>
 
             <!-- Minimalist SVG Architecture Diagram -->
@@ -690,87 +665,191 @@
               </svg>
             </div>
           </article>
+        </div>
+      </div>
+    </section>
 
-          <!-- BENTO 3 (5 cols): Two-Way .paw Boundary Customs -->
-          <article class="lg:col-span-5 bg-surface border hairline rounded-md p-6 flex flex-col justify-between">
+    <!-- 6. SECTION 04: NATIVE SPEED & MEMORY FOOTPRINT -->
+    <section id="benchmarks" class="border-b hairline">
+      <div class="max-w-6xl mx-auto px-6 py-20">
+        <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
+          <div>
+            <p class="font-mono text-[11px] uppercase tracking-wider text-ink-muted mb-2">
+              04 / Native Speed &amp; Memory Footprint
+            </p>
+            <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight leading-tight text-ink-primary">
+              C++ speed. Fraction of Python&rsquo;s RAM.
+            </h2>
+          </div>
+          <p class="font-mono text-xs text-ink-secondary tabular-nums">
+            Pure-native <code class="text-ink-primary">--mode prod</code> · Linux x86-64 · Differential-verified
+          </p>
+        </div>
+
+        <!-- Primary Card: Dual-Dimension Speed + Peak RSS Table -->
+        <div class="bg-surface border hairline rounded-md overflow-hidden">
+          <div class="px-5 py-3.5 border-b hairline bg-canvas flex flex-wrap items-center justify-between gap-2">
             <div>
-              <div class="flex items-center justify-between gap-2 mb-3">
-                <span class="font-mono text-[11px] text-ink-muted">03 · .PAW BOUNDARY</span>
-                <span class="font-mono text-[11px] text-ink-secondary border hairline bg-canvas px-2 py-0.5 rounded">
-                  exit 70 · replayable
-                </span>
-              </div>
-              <h3 class="text-lg font-semibold tracking-tight text-ink-primary">
-                Two-way customs, zero silent drift
-              </h3>
-              <p class="mt-2 text-sm leading-relaxed text-ink-secondary">
-                Keep <code class="font-mono text-xs text-ink-primary">numpy</code>,
-                <code class="font-mono text-xs text-ink-primary">pandas</code>, and
-                <code class="font-mono text-xs text-ink-primary">PIL</code> isolated in
-                <code class="font-mono text-xs text-ink-primary">.paw</code> modules.
-                Any <code class="font-mono text-xs text-ink-primary">None</code>, NaN, or type
-                mismatch fuses immediately and writes a deterministic replay snapshot.
+              <p class="font-mono text-[11px] uppercase tracking-wider text-ink-primary font-semibold">
+                Memory Footprint &amp; Native Speed (--mode prod · Peak RSS)
+              </p>
+              <p class="text-xs text-ink-secondary mt-1">
+                Zero <code class="font-mono text-ink-primary">PyObject*</code> boxing, zero GC overhead, and contiguous C-layout buffers (<span class="font-mono text-ink-primary">8 B</span> per <code class="font-mono text-ink-primary">float64</code> vs ~32–40 B in Python <code class="font-mono text-ink-primary">list</code>).
               </p>
             </div>
+            <span class="font-mono text-[11px] text-accent border hairline bg-surface px-2 py-0.5 rounded shrink-0">
+              vs CPython 3.12 &amp; g++ -O2
+            </span>
+          </div>
 
-            <!-- Boundary Fault JSON -->
-            <div class="mt-6 bg-canvas border hairline rounded-md overflow-hidden">
-              <div class="px-3.5 py-2 border-b hairline flex items-center justify-between font-mono text-[11px] text-ink-muted">
-                <span>pa_boundary_fault.json</span>
-                <span>--mode dev</span>
-              </div>
-              <pre class="p-3.5 font-mono text-[11.5px] leading-[1.6] overflow-x-auto tabular-nums"><code><span class="tok-op">{</span>
-  <span class="tok-kw">"direction"</span><span class="tok-op">:</span> <span class="tok-id">"PY_TO_PA_OUT"</span><span class="tok-op">,</span>
-  <span class="tok-kw">"worker"</span><span class="tok-op">:</span> <span class="tok-id">"np_ops.sum_array"</span><span class="tok-op">,</span>
-  <span class="tok-kw">"violation"</span><span class="tok-op">:</span> <span class="tok-id">"return: None where f64 declared"</span><span class="tok-op">,</span>
-  <span class="tok-kw">"in_payload_snapshot"</span><span class="tok-op">: [{</span>
-    <span class="tok-id">"type"</span><span class="tok-op">:</span> <span class="tok-id">"buffer&lt;f64&gt;"</span><span class="tok-op">,</span> <span class="tok-id">"values"</span><span class="tok-op">: [1, 2, 3, 4]
-  <span class="tok-op">}]</span>
-<span class="tok-op">}</span></code></pre>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="border-b hairline bg-canvas/60 font-mono text-[11px] text-ink-muted uppercase tracking-wider">
+                  <th class="px-5 py-3 font-medium">Workload</th>
+                  <th class="px-4 py-3 font-medium text-right">Pa Time</th>
+                  <th class="px-4 py-3 font-medium text-right">Baseline Time</th>
+                  <th class="px-4 py-3 font-medium text-right">Pa Peak RSS</th>
+                  <th class="px-4 py-3 font-medium text-right">Baseline RSS</th>
+                  <th class="px-5 py-3 font-medium text-right">Memory Advantage</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-white/[0.08] font-mono tabular-nums">
+                <tr>
+                  <td class="px-5 py-3.5 font-sans">
+                    <div class="font-medium text-ink-primary">5M-Float Sliding Window</div>
+                    <div class="text-[11px] text-ink-muted font-mono">10M float64 total = 76.29 MB raw · vs Python list</div>
+                  </td>
+                  <td class="px-4 py-3.5 text-right text-ink-primary font-semibold">49.5 ms</td>
+                  <td class="px-4 py-3.5 text-right text-ink-secondary">1,545.9 ms <span class="text-ink-muted">(31&times;)</span></td>
+                  <td class="px-4 py-3.5 text-right text-accent font-semibold">78.11 MB</td>
+                  <td class="px-4 py-3.5 text-right text-ink-secondary">397.68 MB</td>
+                  <td class="px-5 py-3.5 text-right text-accent font-semibold">5.1&times; smaller <span class="text-ink-muted font-normal">(~0 MB overhead)</span></td>
+                </tr>
+                <tr>
+                  <td class="px-5 py-3.5 font-sans">
+                    <div class="font-medium text-ink-primary">CRC-32 + SHA-256 Hashing</div>
+                    <div class="text-[11px] text-ink-muted font-mono">100 KB &times; 50 / &times; 20 · vs Pure Python</div>
+                  </td>
+                  <td class="px-4 py-3.5 text-right text-ink-primary font-semibold">35.5 ms</td>
+                  <td class="px-4 py-3.5 text-right text-ink-secondary">~2,000 ms <span class="text-ink-muted">(~55&times;)</span></td>
+                  <td class="px-4 py-3.5 text-right text-accent font-semibold">2.67 MB</td>
+                  <td class="px-4 py-3.5 text-right text-ink-secondary">~21.1 MB</td>
+                  <td class="px-5 py-3.5 text-right text-accent font-semibold">7.9&times; smaller</td>
+                </tr>
+                <tr>
+                  <td class="px-5 py-3.5 font-sans">
+                    <div class="font-medium text-ink-primary">Raytracer (C++ Port)</div>
+                    <div class="text-[11px] text-ink-muted font-mono">400&times;225 &times; 24 SPP · vs g++ -O2 ref_rt.cpp</div>
+                  </td>
+                  <td class="px-4 py-3.5 text-right text-ink-primary font-semibold">795.4 ms</td>
+                  <td class="px-4 py-3.5 text-right text-ink-secondary">531.5 ms <span class="text-ink-muted">(C++ -O2)</span></td>
+                  <td class="px-4 py-3.5 text-right text-accent font-semibold">2.10 MB</td>
+                  <td class="px-4 py-3.5 text-right text-ink-secondary">4.25 MB <span class="text-ink-muted">(C++ -O2)</span></td>
+                  <td class="px-5 py-3.5 text-right text-accent font-semibold">2.0&times; smaller than g++ -O2</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="px-5 py-3 border-t hairline bg-canvas font-mono text-[11px] text-ink-muted flex flex-wrap items-center justify-between gap-2">
+            <span>All pure-native benchmarks measured via <span class="text-ink-secondary">/usr/bin/time -v</span> without embedded CPython bridges.</span>
+            <span>See <a href="architecture.html#paw" class="text-ink-secondary underline hover:text-ink-primary">Architecture §07</a> for <code class="text-ink-secondary">.paw</code> bridge RSS footprint.</span>
+          </div>
+        </div>
+
+        <!-- Secondary Card: Compute Speed-Up Suite over CPython 3.12 -->
+        <div class="mt-8 bg-surface border hairline rounded-md overflow-hidden">
+          <div class="px-5 py-3 border-b hairline bg-canvas flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] text-ink-muted">
+            <span>ALGORITHM SPEED-UP SUITE (PA LLVM -O2 VS CPYTHON 3.12)</span>
+            <div class="flex items-center gap-5">
+              <span class="inline-flex items-center gap-1.5 text-ink-primary">
+                <span class="w-2.5 h-2.5 rounded-sm bg-accent inline-block"></span>
+                Pa (LLVM -O2)
+              </span>
+              <span class="inline-flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-sm bg-zinc-800 inline-block"></span>
+                CPython 3.12 (1.0&times;)
+              </span>
             </div>
-          </article>
+          </div>
 
-          <!-- BENTO 4 (7 cols): AI Skills + JSON Repair Tickets -->
-          <article class="lg:col-span-7 bg-surface border hairline rounded-md p-6 flex flex-col justify-between">
-            <div>
-              <div class="flex items-center justify-between gap-2 mb-3">
-                <span class="font-mono text-[11px] text-ink-muted">04 · AI-NATIVE WORKFLOW</span>
-                <div class="flex items-center gap-1.5 font-mono text-[11px] text-ink-secondary">
-                  <span class="border hairline bg-canvas px-1.5 py-0.5 rounded">pa-coder</span>
-                  <span class="border hairline bg-canvas px-1.5 py-0.5 rounded">py-to-pa</span>
-                  <span class="border hairline bg-canvas px-1.5 py-0.5 rounded">cpp-to-pa</span>
+          <div class="divide-y divide-white/[0.08]">
+            <div class="px-5 py-4">
+              <div class="flex items-baseline justify-between gap-4 mb-2">
+                <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+                  <span class="font-mono text-xs font-semibold text-ink-primary">utm</span>
+                  <span class="text-xs text-ink-secondary">WGS84 Transverse Mercator, libm, special-zone branching · 100k points</span>
                 </div>
+                <span class="font-mono text-xs font-semibold tabular-nums text-accent shrink-0">~210&times;</span>
               </div>
-              <h3 class="text-lg font-semibold tracking-tight text-ink-primary">
-                First-class AI skills &amp; JSON repair tickets
-              </h3>
-              <p class="mt-2 text-sm leading-relaxed text-ink-secondary">
-                Ships with three coding-agent skill packs and a machine-readable diagnostic mode.
-                <code class="font-mono text-xs text-ink-primary">pac check --ai-diagnostic</code>
-                outputs self-contained repair tickets with inferred context, causal chains, and
-                deterministic patches—including automatic <code class="font-mono text-xs text-ink-primary">@struct</code>
-                surgery for heterogeneous lists.
-              </p>
+              <div class="flex items-center gap-3">
+                <div class="flex-1 h-2 bg-canvas rounded-sm overflow-hidden"><div class="h-full bg-accent rounded-sm" style="width: 100%"></div></div>
+                <span class="w-20 text-right font-mono text-[11px] tabular-nums text-ink-primary">165–250&times;</span>
+              </div>
             </div>
 
-            <!-- Real Terminal Output -->
-            <div class="mt-6 bg-canvas border hairline rounded-md overflow-hidden">
-              <div class="px-3.5 py-2 border-b hairline flex items-center justify-between font-mono text-[11px] text-ink-muted">
-                <span>$ pac check --ai-diagnostic examples/</span>
-                <span class="tabular-nums">exit 1 · 1 ticket</span>
+            <div class="px-5 py-4">
+              <div class="flex items-baseline justify-between gap-4 mb-2">
+                <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+                  <span class="font-mono text-xs font-semibold text-ink-primary">benchmark</span>
+                  <span class="text-xs text-ink-secondary">50M-iteration 64-bit LCG integer &amp; Leibniz float loops</span>
+                </div>
+                <span class="font-mono text-xs font-semibold tabular-nums text-accent shrink-0">~110&times;</span>
               </div>
-              <pre class="p-3.5 font-mono text-[11.5px] leading-[1.6] overflow-x-auto tabular-nums"><code><span class="tok-op">[{</span>
-  <span class="tok-kw">"code"</span><span class="tok-op">:</span> <span class="tok-id">"PA_E050"</span><span class="tok-op">,</span>  <span class="tok-kw">"skill_rule_ref"</span><span class="tok-op">:</span> <span class="tok-id">"pa-coder#borrowing"</span><span class="tok-op">,</span>
-  <span class="tok-kw">"location"</span><span class="tok-op">:</span> <span class="tok-id">"main.pa:197:18"</span><span class="tok-op">,</span>
-  <span class="tok-kw">"summary"</span><span class="tok-op">:</span> <span class="tok-id">"callee mutates 'eastings'; caller must pass mut(eastings)"</span><span class="tok-op">,</span>
-  <span class="tok-kw">"repair_plan"</span><span class="tok-op">: {</span>
-    <span class="tok-id">"strategy"</span><span class="tok-op">:</span> <span class="tok-id">"wrap_mut_borrow"</span><span class="tok-op">,</span>
-    <span class="tok-id">"suggested_patches"</span><span class="tok-op">: [{</span> <span class="tok-id">"replace"</span><span class="tok-op">:</span> <span class="tok-id">"eastings=mut(eastings)"</span> <span class="tok-op">}]</span>
-  <span class="tok-op">}</span>
-<span class="tok-op">}]</span></code></pre>
+              <div class="flex items-center gap-3">
+                <div class="flex-1 h-2 bg-canvas rounded-sm overflow-hidden"><div class="h-full bg-accent rounded-sm" style="width: 52.4%"></div></div>
+                <span class="w-20 text-right font-mono text-[11px] tabular-nums text-ink-primary">110&times;</span>
+              </div>
             </div>
-          </article>
 
+            <div class="px-5 py-4">
+              <div class="flex items-baseline justify-between gap-4 mb-2">
+                <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+                  <span class="font-mono text-xs font-semibold text-ink-primary">levenshtein</span>
+                  <span class="text-xs text-ink-secondary">UTF-8 byte spans, rolling arrays, flattened 2-D DP · 50k pairs</span>
+                </div>
+                <span class="font-mono text-xs font-semibold tabular-nums text-accent shrink-0">~80&times;</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="flex-1 h-2 bg-canvas rounded-sm overflow-hidden"><div class="h-full bg-accent rounded-sm" style="width: 38.1%"></div></div>
+                <span class="w-20 text-right font-mono text-[11px] tabular-nums text-ink-primary">65–95&times;</span>
+              </div>
+            </div>
+
+            <div class="px-5 py-4">
+              <div class="flex items-baseline justify-between gap-4 mb-2">
+                <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+                  <span class="font-mono text-xs font-semibold text-ink-primary">kdtree</span>
+                  <span class="text-xs text-ink-secondary">Recursion, nested @struct AoS, manual-stack search</span>
+                </div>
+                <span class="font-mono text-xs font-semibold tabular-nums text-accent shrink-0">~26&times;</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="flex-1 h-2 bg-canvas rounded-sm overflow-hidden"><div class="h-full bg-accent rounded-sm" style="width: 12.4%"></div></div>
+                <span class="w-20 text-right font-mono text-[11px] tabular-nums text-ink-primary">22–29&times;</span>
+              </div>
+            </div>
+
+            <div class="px-5 py-4">
+              <div class="flex items-baseline justify-between gap-4 mb-2">
+                <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+                  <span class="font-mono text-xs font-semibold text-ink-primary">delaunator</span>
+                  <span class="text-xs text-ink-secondary">Dynamic Vec growth, while loops, half-edge index jumps</span>
+                </div>
+                <span class="font-mono text-xs font-semibold tabular-nums text-accent shrink-0">~17&times;</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="flex-1 h-2 bg-canvas rounded-sm overflow-hidden"><div class="h-full bg-accent rounded-sm" style="width: 8.1%"></div></div>
+                <span class="w-20 text-right font-mono text-[11px] tabular-nums text-ink-primary">17&times;</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="px-5 py-3 border-t hairline bg-canvas font-mono text-[11px] text-ink-muted flex flex-wrap items-center justify-between gap-2">
+            <span>Higher is faster. Differential-verified: exact int/set, float &Delta; &lt; 1e-9.</span>
+            <span>Pure .pa binaries link zero libpython.</span>
+          </div>
         </div>
       </div>
     </section>
