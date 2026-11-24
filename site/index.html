@@ -492,40 +492,38 @@
             </div>
           </article>
 
-          <!-- Right Card: Python -> Pa (pip install native .so) -->
+          <!-- Right Card: Python -> Pa (pip install native modules) -->
           <article class="bg-surface border hairline rounded-md p-6 flex flex-col justify-between">
             <div>
               <div class="flex items-center justify-between gap-2 mb-3">
-                <span class="font-mono text-[11px] text-[#5EEAD4]">PYTHON &rarr; PA · NATIVE .SO LIBS</span>
+                <span class="font-mono text-[11px] text-[#5EEAD4]">PYTHON &rarr; PA · NATIVE MODULES</span>
                 <span class="font-mono text-[11px] text-ink-secondary border hairline bg-canvas px-2 py-0.5 rounded">
-                  0 PyObject* C ABI
+                  zero ctypes boilerplate
                 </span>
               </div>
               <h3 class="text-lg font-semibold tracking-tight text-ink-primary">
-                Compile hot kernels into <code class="font-mono text-base">pip install</code>-ready <code class="font-mono text-base">.so</code> libs
+                Compile hot kernels into <code class="font-mono text-base">pip install</code>-ready native modules
               </h3>
               <p class="mt-2 text-sm leading-relaxed text-ink-secondary">
                 Compile <code class="font-mono text-xs text-ink-primary">@export</code> functions with
-                <code class="font-mono text-xs text-ink-primary">pac build --shared</code> into standard
-                C-ABI <code class="font-mono text-xs text-ink-primary">.so</code> / <code class="font-mono text-xs text-ink-primary">.dylib</code> / <code class="font-mono text-xs text-ink-primary">.dll</code>
-                libraries with zero <code class="font-mono text-xs text-ink-primary">PyObject*</code>
-                dependency. Ship drop-in <code class="font-mono text-xs text-ink-primary">pip install</code>
-                acceleration packages or repackage your
-                own Python hot loops via <code class="font-mono text-xs text-ink-primary">ctypes</code>.
+                <code class="font-mono text-xs text-ink-primary">pac build --shared</code> into drop-in
+                native extension modules&mdash;no <code class="font-mono text-xs text-ink-primary">ctypes</code>
+                boilerplate, no C headers, and zero manual pointer wiring. Ship ready-to-use
+                <code class="font-mono text-xs text-ink-primary">pip install</code> acceleration packages
+                or wrap your own Python hot loops in one command.
               </p>
             </div>
 
             <div class="mt-5 bg-canvas border hairline rounded-md overflow-hidden">
               <div class="px-3.5 py-2 border-b hairline flex items-center justify-between font-mono text-[11px] text-ink-muted">
-                <span>$ pac build --shared kernel.pa -o libpa_kernel.so</span>
-                <span class="text-accent">setjmp guarded</span>
+                <span>$ pac build --shared kernel.pa -o pa_kernel.so</span>
+                <span class="text-accent">direct import</span>
               </div>
-              <pre class="p-3.5 font-mono text-[11.5px] leading-[1.65] overflow-x-auto tabular-nums"><code><span class="tok-kw">import</span> <span class="tok-id">ctypes</span>
+              <pre class="p-3.5 font-mono text-[11.5px] leading-[1.65] overflow-x-auto tabular-nums"><code><span class="tok-kw">import</span> <span class="tok-id">pa_kernel</span>
 
-<span class="tok-id">lib</span> <span class="tok-op">=</span> <span class="tok-id">ctypes</span><span class="tok-op">.</span><span class="tok-id">CDLL</span><span class="tok-op">(</span><span class="tok-id">"./libpa_kernel.so"</span><span class="tok-op">)</span>
-<span class="tok-id">lib</span><span class="tok-op">.</span><span class="tok-id">batch_checksum</span><span class="tok-op">.</span><span class="tok-id">restype</span> <span class="tok-op">=</span> <span class="tok-id">ctypes</span><span class="tok-op">.</span><span class="tok-id">c_double</span>
-<span class="tok-id">res</span> <span class="tok-op">=</span> <span class="tok-id">lib</span><span class="tok-op">.</span><span class="tok-id">batch_checksum</span><span class="tok-op">(</span><span class="tok-id">2000</span><span class="tok-op">,</span> <span class="tok-id">13</span><span class="tok-op">,</span> <span class="tok-id">1</span><span class="tok-op">)</span>
-<span class="tok-kw">assert</span> <span class="tok-id">lib</span><span class="tok-op">.</span><span class="tok-id">pa_error_code</span><span class="tok-op">() ==</span> <span class="tok-id">0</span>  <span class="tok-cm"># host never crashes</span></code></pre>
+<span class="tok-cm"># Native LLVM -O2 speed, zero ctypes boilerplate</span>
+<span class="tok-id">res</span> <span class="tok-op">=</span> <span class="tok-id">pa_kernel</span><span class="tok-op">.</span><span class="tok-id">batch_checksum</span><span class="tok-op">(</span><span class="tok-id">2000</span><span class="tok-op">,</span> <span class="tok-id">13</span><span class="tok-op">,</span> <span class="tok-id">1</span><span class="tok-op">)</span>
+<span class="tok-id">print</span><span class="tok-op">(</span><span class="tok-id">res</span><span class="tok-op">)</span></code></pre>
             </div>
             <p class="mt-3 text-[11px] text-ink-muted">
               Need to wrap an existing <code class="font-mono text-ink-secondary">.so</code> or hot loop?
