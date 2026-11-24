@@ -473,10 +473,15 @@ def test_alias_in_export_struct_and_paw_signatures(tmp_path):
         def main() -> int:
             xs = [1.0, 2.0, 3.0]
             ys = w.scale(xs, 2)
-            print(len(ys), ys[2])
+            print(len(ys), ys[2], w.mix(uint8(5), uint32(10), uint(20), int32(-3), float32(1.5)))
             return 0
-    """, paws={"w": "def scale(a: span[float], k: int) -> Vec[float]:\n    return [x * k for x in a]\n"})
-    assert r.stdout.strip() == "3 6.0"
+    """, paws={"w": (
+        "def scale(a: span[float], k: int) -> Vec[float]:\n"
+        "    return [x * k for x in a]\n\n"
+        "def mix(a: uint8, b: uint32, c: uint, d: int32, e: float32) -> float:\n"
+        "    return float(a + b + c + d) + float(e)\n"
+    )})
+    assert r.stdout.strip() == "3 6.0 33.5"
 
 
 def test_inlay_hints_use_python_names_but_keep_narrow_types():
