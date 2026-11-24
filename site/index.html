@@ -202,9 +202,10 @@
             </h1>
 
             <p class="mt-5 text-[15px] leading-relaxed text-ink-secondary max-w-md">
-              Written by AI, effortlessly reviewed by humans, compiled straight to native C++ speed.
-              Deterministic JSON diagnostics eliminate agent retry loops — slashing token spend and
-              retry latency.
+              AI-native compiler for ultra-fast, zero-copy Python acceleration (<code class="font-mono text-xs text-ink-primary">--shared</code>
+              self-contained <code class="font-mono text-xs text-ink-primary">.so</code>/<code class="font-mono text-xs text-ink-primary">.pyd</code> modules)
+              and effortless standalone execution (<code class="font-mono text-xs text-ink-primary">pac run</code>). Deterministic JSON diagnostics
+              eliminate agent retry loops.
             </p>
 
             <!-- Interactive Terminal Install Box -->
@@ -225,7 +226,7 @@
                 </button>
               </div>
               <div class="px-3.5 py-2 border-t hairline bg-canvas/60 flex items-center justify-between font-mono text-[11px] text-ink-muted">
-                <span>Provides <span class="text-ink-secondary">pac</span> CLI · LSP · doctor · bundle</span>
+                <span>Provides <span class="text-ink-secondary">pac run</span> · build --shared · LSP · doctor</span>
                 <span class="tabular-nums">CPython 3.11–3.13</span>
               </div>
             </div>
@@ -718,14 +719,14 @@
         <!-- 3-Column KPI Highlights -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <div class="bg-surface border hairline rounded-md p-5">
-            <div class="font-mono text-[11px] uppercase tracking-wider text-ink-muted">Peak Compute Speedup</div>
-            <div class="mt-2 font-mono text-2xl sm:text-3xl font-semibold tabular-nums text-accent">264.4&times;</div>
-            <div class="mt-1 text-xs text-ink-secondary">CRC-32 + SHA-256 vs CPython 3.12 (<span class="font-mono text-ink-primary">35.5 ms</span> vs <span class="font-mono">9,378.8 ms</span>)</div>
+            <div class="font-mono text-[11px] uppercase tracking-wider text-ink-muted">Peak Batch Speedup</div>
+            <div class="mt-2 font-mono text-2xl sm:text-3xl font-semibold tabular-nums text-accent">530.0&times;</div>
+            <div class="mt-1 text-xs text-ink-secondary">10k fuzzy filter via <code class="font-mono text-ink-primary">--shared</code> (<span class="font-mono text-ink-primary">4.78 ms</span> vs <span class="font-mono">2,532.7 ms</span> Python)</div>
           </div>
           <div class="bg-surface border hairline rounded-md p-5">
-            <div class="font-mono text-[11px] uppercase tracking-wider text-ink-muted">Peak Memory Savings</div>
-            <div class="mt-2 font-mono text-2xl sm:text-3xl font-semibold tabular-nums text-accent">9.2&times;</div>
-            <div class="mt-1 text-xs text-ink-secondary">UTM 100k pts (<span class="font-mono text-ink-primary">6.36 MB</span> vs <span class="font-mono">58.76 MB</span>); 5M floats <span class="font-mono text-ink-primary">5.1&times;</span> smaller</div>
+            <div class="font-mono text-[11px] uppercase tracking-wider text-ink-muted">Standalone Peak RSS</div>
+            <div class="mt-2 font-mono text-2xl sm:text-3xl font-semibold tabular-nums text-accent">1.7 MB</div>
+            <div class="mt-1 text-xs text-ink-secondary">Pure Pa native binary (<span class="font-mono text-ink-primary">10.4&times;</span> smaller than CPython&rsquo;s <span class="font-mono">17.7 MB</span>)</div>
           </div>
           <div class="bg-surface border hairline rounded-md p-5">
             <div class="font-mono text-[11px] uppercase tracking-wider text-ink-muted">Lighter Than g++ -O2</div>

@@ -5,6 +5,10 @@ description: Refactor an existing Python repository to Pa for speed, using a thr
 
 # py-to-pa
 
+## Output Rule (Mandatory for Python Acceleration)
+- **`--shared` (`.so` / `.pyd`) is the ONLY default build target** when accelerating Python code: mark hot kernels with `@export` and compile via `pac build --shared --mode prod <mod>.pa -o <mod>.so` (or `<mod>.pyd` on Windows — self-contained with zero extra DLLs), then `import <mod>` directly in Python with zero `ctypes`.
+- **Never** generate standalone `.exe` / executable binaries for Python acceleration tasks (only use `pac run` / `pac build -o <bin>` if the user explicitly asks to rewrite the entire app as a standalone CLI).
+
 ## Step 1 – Feasibility Gate (do this first, per module)
 - 🟢 **GREEN**: pure computation, no third-party imports -> convert the whole module to `.pa`.
 - 🟡 **YELLOW**: uses third-party libs or a web framework -> invert control: `.pa` host owns logic; move each library call into a `.paw` file with a locked In -> Out signature. For Web frameworks keep a *thin* `.py` router shell: extract raw params -> call an `@export` `.pa` function -> serialize result.
@@ -67,4 +71,4 @@ Rules for the AI doing the port (also apply the string/`mut()` rules above when 
 4. Add at least one negative-operand case to the differential test fixtures for every converted `//` or `%`.
 
 ## Step 3 – Prove it
-Generate a differential test: run the original Python and the compiled Pa binary on the same inputs (dump inputs to JSON fixtures, compare outputs with a tolerance for floats) and record wall-clock timings of both in a short report. Integer `//` and `%` differ for negative operands (Pa truncates toward zero) – call this out when relevant.
+Build the extension module with `pac build --shared --mode prod <mod>.pa -o <mod>.so` (`.pyd` on Windows), import it directly in Python (`import <mod>`), and run a differential test against the original Python on identical inputs (comparing outputs with a tolerance for floats) while recording wall-clock timings of both in a short report. Integer `//` and `%` differ for negative operands (Pa truncates toward zero) – call this out when relevant.

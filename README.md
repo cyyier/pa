@@ -5,7 +5,7 @@
 <h1 align="center">Pa</h1>
 
 <p align="center">
-  Python-syntax, C++-memory-layout, LLVM-compiled systems language with typed <code>.paw</code> bridges to the Python ecosystem.<br/>
+  AI-native LLVM compiler for ultra-fast, zero-copy Python acceleration (<code>--shared</code> self-contained <code>.so</code>/<code>.pyd</code> modules, up to <strong>530&times;</strong> faster) and effortless standalone execution (<code>pac run</code>, <strong>1.7 MB</strong> peak RSS).<br/>
   <a href="https://palang.dev">Website</a> ·
   <a href="https://palang.dev/quickstart">Quickstart</a> ·
   <a href="https://palang.dev/architecture">Architecture</a> ·
@@ -14,14 +14,17 @@
 
 ---
 
-## Installation & Minimal Example
+## Installation & Quickstart
 
 Requires Linux x86-64, macOS, or Windows x64, CPython 3.11–3.13 (headers + shared Python library), and a C compiler (`gcc`, `clang`, or MSVC `cl`).
 
 ```bash
 pip install pa-compiler        # installs `pac`
+pac doctor                     # verify LLVM, C compiler, and Python headers
 pac skill --install claude     # optional: install AI skills (also: cursor, codex, copilot, antigravity)
 ```
+
+### 1. Instant Native Execution (`pac run`, zero leftover `.exe` / `.dll`)
 
 Create `hello.pa`:
 
@@ -37,13 +40,22 @@ def main() -> int:
     return 0
 ```
 
-Compile and run:
+Run directly in one step:
 
 ```bash
-pac build hello.pa --mode prod -o hello && ./hello
+pac run hello.pa               # dev mode (bounds checks, auto-cleanup)
+pac run --mode prod hello.pa   # prod mode (LLVM -O2)
 ```
 
-For `.paw` Python bridges, `--relocatable` bundles, `pac doctor`, and `--shared` C-ABI builds, see the full guide at <https://palang.dev/quickstart>.
+### 2. Zero-Copy Python Extension (`pac build --shared`)
+
+Compile `@export` functions into a self-contained `.so` / `.pyd` module (zero `ctypes`, zero extra Windows DLLs) and `import` directly from Python:
+
+```bash
+pac build --shared --mode prod kernel.pa -o pa_kernel.so   # or pa_kernel.pyd on Windows
+```
+
+For `.paw` Python bridges, `--relocatable` bundles, `pac doctor`, and the full AI workflow, see <https://palang.dev/quickstart>.
 
 ---
 
@@ -56,7 +68,7 @@ pa/
 │   ├── paw.py, diagnostics.py             # .paw header parser/linter & AI JSON repair tickets
 │   ├── codegen.py, build.py               # LLVM IR emission (llvmlite), -O2 object build, gcc link, @export
 │   ├── runtime_core.c, runtime_bridge.c   # RAII fault/print core & embedded CPython zero-copy .paw bridge
-│   ├── cli.py, doctor.py, skills_cmd.py   # `pac` CLI: check, build, doctor, bundle, skill
+│   ├── cli.py, doctor.py, skills_cmd.py   # `pac` CLI: run, check, build, doctor, bundle, skill
 │   ├── lsp_server.py                      # Auto-reloading LSP server (inlay hints, hover memory audit cards)
 │   └── skills/                            # Bundled SKILL.md assets shipped inside the wheel
 ├── skills/                                # Source AI skills (pa-coder, py-to-pa, cpp-to-pa)
@@ -91,7 +103,7 @@ pytest -q                          # run full compiler, runtime, LSP, doctor, an
 - **Included:** zero-annotation `.pa` compiler (`int`/`uint`/`float`/`bool`, explicit widths `int32`/`uint8`/`uint32`/`uint64`/`float32` + short aliases `i32`/`u8`/`u32`/`u64`/`f32`, `**`, zero-copy `str_view` slicing, `@struct`, stack/RAII `Vec`, flat CSR `Vec[Vec[T]]`, `String`, `libm`, multi-file `.pa` module imports via local dirs / `-I` / `PA_PATH` / pip packages), `.paw` zero-copy CPython bridge with two-way customs, `--shared` guarded C-ABI libraries, `pac doctor` / `pac bundle` (ELF / Mach-O / PE), `pac skill`, `pac lsp`, and VS Code extension.
 
 **Planned:**
-- Standalone ecosystem packages (`pa-libs`) for common data, geometry, and parsing libraries (powered by multi-file `.pa` module imports).
+- Growing the [`libpa`](https://github.com/cyyier/libpa) ecosystem (`levenshtein-pa`, `utm-pa`, `kdtree-pa`, `bm25-pa`) for pre-compiled Python acceleration wheels and pure `.pa` libraries.
 - *(Low priority)* Nested `Vec` fields inside `@struct` with recursive RAII destructors (Pa recommends flat SoA arrays or CSR `Vec[Vec[T]]`).
 
 **Non-goals (won't do):**

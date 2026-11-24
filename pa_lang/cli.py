@@ -1,10 +1,12 @@
-"""pac: check [--ai-diagnostic] | build [-o bin | --shared] | lsp"""
+"""pac: check [--ai-diagnostic] | run | build [-o bin | --shared] | doctor | bundle | lsp | skill"""
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import subprocess
 import sys
+import tempfile
 
 from .validator import check_file
 
@@ -50,6 +52,29 @@ def cmd_build(args) -> int:
         if note:
             print(note, file=sys.stderr)
     return 0
+
+
+def cmd_run(args) -> int:
+    from .build import BuildError, compile_pa
+    exe_ext = ".exe" if sys.platform == "win32" else ""
+    stem = os.path.splitext(os.path.basename(args.file))[0] or "pa_app"
+    prog_args = list(args.prog_args or [])
+    if prog_args and prog_args[0] == "--":
+        prog_args = prog_args[1:]
+    with tempfile.TemporaryDirectory(prefix="pac_run_") as tmp:
+        out_bin = os.path.join(tmp, f"{stem}{exe_ext}")
+        try:
+            built = compile_pa(
+                args.file,
+                out=out_bin,
+                mode=args.mode,
+                include_dirs=args.include or None,
+            )
+        except BuildError as e:
+            print(e, file=sys.stderr)
+            return 1
+        res = subprocess.run([built, *prog_args])
+        return res.returncode
 
 
 def cmd_doctor(args) -> int:
@@ -111,6 +136,13 @@ def main(argv=None) -> int:
     b.add_argument("--shared", action="store_true", help="build a shared library of @export functions")
     b.add_argument("--emit-ir", action="store_true", help="print LLVM IR instead of linking")
     b.set_defaults(fn=cmd_build)
+    r = sub.add_parser("run", help="compile a .pa file to a temp dir, execute it, and clean up")
+    r.add_argument("file")
+    r.add_argument("--mode", choices=("dev", "prod"), default="dev",
+                   help="dev: full bounds & boundary checks (default); prod: optimized native execution")
+    r.add_argument("-I", "--include", action="append", help="extra directory to search for .pa modules (repeatable)")
+    r.add_argument("prog_args", nargs=argparse.REMAINDER, help="optional arguments forwarded after `--`")
+    r.set_defaults(fn=cmd_run)
     d = sub.add_parser("doctor", help="diagnose the build environment, or why a built binary cannot start")
     d.add_argument("binary", nargs="?", help="a binary built by pac (omit to check this machine)")
     d.set_defaults(fn=cmd_doctor)

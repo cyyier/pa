@@ -166,11 +166,24 @@ def _compile_c(kind: str, cc: str, src: str, obj: str, includes=(), defines=()) 
         raise BuildError(f"C compile failed for {os.path.basename(src)}:\n{r.stderr or r.stdout}")
 
 
+def _is_mingw_clang(cc: str) -> bool:
+    if "mingw" in cc.lower():
+        return True
+    try:
+        r = subprocess.run([cc, "-dumpmachine"], capture_output=True, text=True, timeout=5)
+        return "mingw" in (r.stdout or "").lower()
+    except Exception:
+        return False
+
+
 def _link_binary(kind: str, cc: str, objs: list[str], out: str, shared: bool,
                  paws: set, relocatable: bool, pyinfo: dict) -> None:
     libdir = pyinfo.get("libdir", "")
     lib_file = pyinfo.get("lib_file", "")
     lib_name = pyinfo.get("lib_name", "")
+    mingw_static = ["-static-libgcc", "-static-libstdc++", "-Wl,-Bstatic", "-lwinpthread", "-Wl,-Bdynamic"]
+    fallback_cmd: Optional[list[str]] = None
+
     if sys.platform == "win32":
         need_pylib = bool(paws or shared)
         if kind == "msvc":
@@ -180,20 +193,30 @@ def _link_binary(kind: str, cc: str, objs: list[str], out: str, shared: bool,
                     cmd.append(f"/LIBPATH:{libdir}")
                 cmd.append(lib_file or f"{lib_name}.lib")
         elif kind == "clang":
-            cmd = [cc, "-O2", *(["-shared"] if shared else []), *objs, "-o", out]
+            use_static = _is_mingw_clang(cc)
+            py_tail: list[str] = []
             if need_pylib:
                 if lib_file:
-                    cmd.append(lib_file)
+                    py_tail.append(lib_file)
                 else:
                     if libdir:
-                        cmd.append(f"-L{libdir}")
-                    cmd.append(f"-l{lib_name}")
-        else:  # mingw gcc
-            cmd = [cc, "-O2", *(["-shared"] if shared else []), *objs, "-o", out, "-lm"]
+                        py_tail.append(f"-L{libdir}")
+                    py_tail.append(f"-l{lib_name}")
+            base = [cc, "-O2", *(["-shared"] if shared else []), *objs, "-o", out]
+            if use_static:
+                cmd = [*base, *mingw_static, *py_tail]
+                fallback_cmd = [*base, "-static-libgcc", "-static-libstdc++", *py_tail]
+            else:
+                cmd = [*base, *py_tail]
+        else:  # mingw gcc: statically link GCC/winpthread runtimes so .pyd/.dll/.exe are self-contained
+            py_tail = []
             if need_pylib:
                 if libdir:
-                    cmd.append(f"-L{libdir}")
-                cmd.append(f"-l{lib_name}")
+                    py_tail.append(f"-L{libdir}")
+                py_tail.append(f"-l{lib_name}")
+            base = [cc, "-O2", *(["-shared"] if shared else []), *objs, "-o", out, "-lm"]
+            cmd = [*base, *mingw_static, *py_tail]
+            fallback_cmd = [*base, "-static-libgcc", "-static-libstdc++", *py_tail]
     elif sys.platform == "darwin":
         libs = ["-lm"]
         if paws:
@@ -219,6 +242,8 @@ def _link_binary(kind: str, cc: str, objs: list[str], out: str, shared: bool,
         cmd = [cc, "-O2", *(["-shared", "-fPIC"] if shared else []), *objs, "-o", out, *libs]
 
     r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode and fallback_cmd is not None and "winpthread" in (r.stderr or r.stdout):
+        r = subprocess.run(fallback_cmd, capture_output=True, text=True)
     if r.returncode:
         raise BuildError("link failed:\n" + (r.stderr or r.stdout))
 

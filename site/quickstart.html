@@ -329,14 +329,20 @@
                     <span class="font-mono text-[10px] text-accent border border-accent/30 bg-accent/10 px-1.5 py-0.5 rounded">pa-coder</span>
                   </div>
                   <p class="font-mono text-xs leading-relaxed text-ink-secondary bg-canvas border hairline rounded p-3.5">
-                    &ldquo;Write a standalone Pa CLI in main.pa that computes a 100k-point moving average, verify it with pac check --ai-diagnostic, and build a native --mode prod binary.&rdquo;
+                    &ldquo;Write a standalone Pa program in main.pa that computes a 100k-point moving average, verify it with pac check --ai-diagnostic, and execute it directly with pac run --mode prod main.pa.&rdquo;
                   </p>
+                  <div class="mt-3 bg-canvas border hairline rounded overflow-hidden">
+                    <div class="px-3 py-1.5 border-b hairline font-mono text-[10px] text-ink-muted uppercase tracking-wider">
+                      How to run (zero leftover .exe / .dll)
+                    </div>
+                    <pre class="px-3 py-2 font-mono text-[11px] leading-relaxed overflow-x-auto"><code><span class="tok-op">$</span> <span class="tok-id">pac run main.pa</span></code></pre>
+                  </div>
                 </div>
                 <div class="flex justify-end">
                   <button
                     type="button"
                     class="copy-trigger inline-flex items-center gap-1.5 font-mono text-[11px] text-ink-secondary hover:text-ink-primary border hairline bg-canvas px-2.5 py-1 rounded transition-colors cursor-pointer"
-                    data-copy="Write a standalone Pa CLI in main.pa that computes a 100k-point moving average, verify it with pac check --ai-diagnostic, and build a native --mode prod binary."
+                    data-copy="Write a standalone Pa program in main.pa that computes a 100k-point moving average, verify it with pac check --ai-diagnostic, and execute it directly with pac run --mode prod main.pa."
                   >
                     <i data-lucide="copy" class="w-3 h-3"></i>
                     <span>Copy Prompt</span>
@@ -344,22 +350,29 @@
                 </div>
               </div>
 
-              <!-- Prompt B: Python .so Accelerator -->
+              <!-- Prompt B: Python .so / .pyd Accelerator -->
               <div class="p-5 flex flex-col justify-between gap-4">
                 <div>
                   <div class="flex items-center justify-between gap-2 mb-2.5">
-                    <span class="font-mono text-[11px] text-ink-primary font-semibold">PROMPT B · PYTHON .SO ACCELERATOR</span>
+                    <span class="font-mono text-[11px] text-ink-primary font-semibold">PROMPT B · PYTHON .SO / .PYD ACCELERATOR</span>
                     <span class="font-mono text-[10px] text-[#5EEAD4] border border-[#5EEAD4]/30 bg-[#5EEAD4]/10 px-1.5 py-0.5 rounded">py-to-pa</span>
                   </div>
                   <p class="font-mono text-xs leading-relaxed text-ink-secondary bg-canvas border hairline rounded p-3.5">
-                    &ldquo;Port the hot loop in scorer.py to an @export Pa kernel using py-to-pa, compile it with pac build --shared into a direct-import .so module, and verify output parity against Python.&rdquo;
+                    &ldquo;Port the hot loop in scorer.py to an @export Pa kernel using py-to-pa, compile it with pac build --shared into a self-contained direct-import .so / .pyd module (scorer_pa), and verify output parity against Python.&rdquo;
                   </p>
+                  <div class="mt-3 bg-canvas border hairline rounded overflow-hidden">
+                    <div class="px-3 py-1.5 border-b hairline font-mono text-[10px] text-ink-muted uppercase tracking-wider">
+                      How to use in Python (zero ctypes)
+                    </div>
+                    <pre class="px-3 py-2 font-mono text-[11px] leading-relaxed overflow-x-auto"><code><span class="tok-kw">import</span> <span class="tok-id">scorer_pa</span>
+<span class="tok-id">result</span> <span class="tok-op">=</span> <span class="tok-id">scorer_pa</span><span class="tok-op">.</span><span class="tok-id">score_batch</span><span class="tok-op">(</span><span class="tok-id">buf</span><span class="tok-op">,</span> <span class="tok-id">2.0</span><span class="tok-op">)</span></code></pre>
+                  </div>
                 </div>
                 <div class="flex justify-end">
                   <button
                     type="button"
                     class="copy-trigger inline-flex items-center gap-1.5 font-mono text-[11px] text-ink-secondary hover:text-ink-primary border hairline bg-canvas px-2.5 py-1 rounded transition-colors cursor-pointer"
-                    data-copy="Port the hot loop in scorer.py to an @export Pa kernel using py-to-pa, compile it with pac build --shared into a direct-import .so module, and verify output parity against Python."
+                    data-copy="Port the hot loop in scorer.py to an @export Pa kernel using py-to-pa, compile it with pac build --shared into a self-contained direct-import .so / .pyd module (scorer_pa), and verify output parity against Python."
                   >
                     <i data-lucide="copy" class="w-3 h-3"></i>
                     <span>Copy Prompt</span>
@@ -453,41 +466,40 @@
     <span class="tok-kw">return</span> <span class="tok-id">0</span></code></pre>
               </div>
 
-              <!-- Build & Run Commands -->
+              <!-- Run Directly (Zero Leftover Artifacts) -->
               <div class="mt-4 bg-canvas border hairline rounded-md overflow-hidden">
                 <div class="px-3.5 py-2 border-b hairline flex items-center justify-between font-mono text-[11px] text-ink-muted">
-                  <span>check, compile &amp; run</span>
+                  <span>run natively (zero leftover .exe / .dll)</span>
                   <button
                     type="button"
                     class="copy-trigger inline-flex items-center gap-1.5 text-ink-secondary hover:text-ink-primary border hairline bg-surface px-2 py-0.5 rounded transition-colors cursor-pointer"
-                    data-copy="pac check main.pa&#10;pac build main.pa --mode prod -o app&#10;./app"
+                    data-copy="pac run main.pa&#10;pac run --mode prod main.pa"
                   >
                     <i data-lucide="copy" class="w-3 h-3"></i>
                     <span>Copy</span>
                   </button>
                 </div>
-                <pre class="p-3.5 font-mono text-[11.5px] leading-[1.65] overflow-x-auto tabular-nums"><code><span class="tok-op">$</span> <span class="tok-id">pac check main.pa</span>
-<span class="tok-op">$</span> <span class="tok-id">pac build main.pa --mode prod -o app</span>
-<span class="tok-op">$</span> <span class="tok-id">./app</span>
+                <pre class="p-3.5 font-mono text-[11.5px] leading-[1.65] overflow-x-auto tabular-nums"><code><span class="tok-op">$</span> <span class="tok-id">pac run main.pa</span>                <span class="tok-cm"># dev mode: bounds checks, auto-cleanup</span>
+<span class="tok-op">$</span> <span class="tok-id">pac run --mode prod main.pa</span>    <span class="tok-cm"># prod mode: LLVM -O2 (~1.7 MB RSS)</span>
 <span class="tok-cm">333328333.34999967</span></code></pre>
               </div>
             </div>
 
             <div class="mt-5 pt-4 border-t hairline text-xs text-ink-secondary leading-relaxed">
-              Use <code class="font-mono text-[11px] text-ink-primary">--mode dev</code> (default) during development for runtime bounds checks
-              and deep <code class="font-mono text-[11px] text-ink-primary">.paw</code> linting; switch to
-              <code class="font-mono text-[11px] text-ink-primary">--mode prod</code> to ship. For binaries that embed <code class="font-mono text-[11px] text-ink-primary">.paw</code> modules
-              across machines, add <code class="font-mono text-[11px] text-ink-primary">--relocatable</code> and run <code class="font-mono text-[11px] text-ink-primary">pac bundle app --with-stdlib</code>.
+              Need a distributable standalone binary? Compile explicitly with
+              <code class="font-mono text-[11px] text-ink-primary">pac build --mode prod main.pa -o app</code>. For binaries that embed
+              <code class="font-mono text-[11px] text-ink-primary">.paw</code> modules across machines, add
+              <code class="font-mono text-[11px] text-ink-primary">--relocatable</code> and run <code class="font-mono text-[11px] text-ink-primary">pac bundle app --with-stdlib</code>.
             </div>
           </article>
 
-          <!-- PATH B: Native .so for Python (preserves #shipping anchor) -->
+          <!-- PATH B: Native .so / .pyd for Python (preserves #shipping anchor) -->
           <article id="shipping" class="bg-surface border hairline rounded-md p-6 flex flex-col justify-between">
             <div>
               <div class="flex items-center justify-between gap-2 mb-3">
-                <span class="font-mono text-[11px] text-[#5EEAD4] font-semibold">PATH B · NATIVE .SO FOR PYTHON</span>
+                <span class="font-mono text-[11px] text-[#5EEAD4] font-semibold">PATH B · NATIVE .SO / .PYD FOR PYTHON</span>
                 <span class="font-mono text-[11px] text-ink-secondary border hairline bg-canvas px-2 py-0.5 rounded">
-                  zero ctypes · direct import
+                  zero ctypes · self-contained
                 </span>
               </div>
               <h3 class="text-lg font-semibold tracking-tight text-ink-primary">
@@ -496,7 +508,8 @@
               <p class="mt-2 text-sm leading-relaxed text-ink-secondary">
                 Replace Cython, pybind11, or <code class="font-mono text-xs text-ink-primary">ctypes</code> wiring.
                 Mark functions with <code class="font-mono text-xs text-ink-primary">@export</code> and compile with
-                <code class="font-mono text-xs text-ink-primary">pac build --shared</code> to emit a CPython-importable module.
+                <code class="font-mono text-xs text-ink-primary">pac build --shared</code> to emit a self-contained
+                <code class="font-mono text-xs text-ink-primary">.so</code> / <code class="font-mono text-xs text-ink-primary">.pyd</code> module (zero external DLLs on Windows).
               </p>
 
               <!-- Code: pa_kernel.pa -->

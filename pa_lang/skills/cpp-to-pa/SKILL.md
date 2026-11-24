@@ -27,4 +27,4 @@ Pa bounds-checks indexes only in `--mode dev` (prod is C-like: no checks, negati
 1. Inline or expand macros first; remove `goto`, exceptions, virtuals, templates (monomorphise by hand).
 2. Replace raw owning pointers with Vec/lists; keep `alloc/free` only where unavoidable.
 3. Write the `.pa` (carry each C++ return type over as `-> T` on every function; `double`/`long long` become `float`/`int`, while `int`/`uint8_t`/`float` map to `i32`/`u8`/`f32` to preserve layout, e.g. `-> float`, `-> Vec[int]`), `@export` the entry points, `pac check --ai-diagnostic` until green.
-4. Build `pac build x.pa --shared`, and fuzz both binaries with identical byte inputs (libFuzzer-style or a seeded random generator); compare outputs byte for byte. Pa `//` and `%` truncate toward zero exactly like C++.
+4. Build with `pac build --shared --mode prod x.pa -o x.so` (`.pyd` on Windows — self-contained, directly importable in Python) or run standalone checks via `pac run x.pa`, and fuzz both implementations with identical byte inputs (libFuzzer-style or a seeded random generator); compare outputs byte for byte. Pa `//` and `%` truncate toward zero exactly like C++.
