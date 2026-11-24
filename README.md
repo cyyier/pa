@@ -19,7 +19,7 @@
 Requires Linux x86-64, macOS, or Windows x64, CPython 3.11–3.13 (headers + shared Python library), and a C compiler (`gcc`, `clang`, or MSVC `cl`).
 
 ```bash
-pip install pa-lang            # installs `pac`
+pip install pa-compiler        # installs `pac`
 pac skill --install claude     # optional: install AI skills (also: cursor, codex, copilot, antigravity)
 ```
 

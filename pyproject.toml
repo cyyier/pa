@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pa-lang"
+name = "pa-compiler"
 dynamic = ["version"]
 description = "Pa language: Python-syntax, C++-memory-layout, LLVM-compiled systems language with .paw bridges to the Python ecosystem"
 readme = "README.md"

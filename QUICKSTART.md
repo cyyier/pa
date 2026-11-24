@@ -9,10 +9,10 @@ Go from zero to a native LLVM-compiled binary with a zero-copy Python `.paw` bri
 
 ## 1. Install & Verify
 
-Install `pa-lang` (which provides the `pac` CLI) and verify your local toolchain:
+Install `pa-compiler` (which provides the `pac` CLI) and verify your local toolchain:
 
 ```bash
-pip install pa-lang
+pip install pa-compiler
 pac doctor
 ```
 

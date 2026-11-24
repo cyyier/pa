@@ -17,7 +17,7 @@ One version number, kept in sync by `tests/test_release.py`:
    ```bash
    twine upload --repository testpypi dist/*
    python -m venv /tmp/v && /tmp/v/bin/pip install --index-url https://test.pypi.org/simple/ \
-        --extra-index-url https://pypi.org/simple/ pa-lang && /tmp/v/bin/pac doctor
+        --extra-index-url https://pypi.org/simple/ pa-compiler && /tmp/v/bin/pac doctor
    ```
 5. Commit, tag and push: `git tag -a vX.Y.Z -m "Pa X.Y.Z" && git push origin main vX.Y.Z`.
    The `release` workflow then builds everything, attaches the wheel/sdist/`.vsix` to a GitHub release and

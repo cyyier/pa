@@ -40,7 +40,7 @@ def test_pac_version_flag():
 
 def test_project_metadata_is_complete():
     p = project()
-    assert p["name"] == "pa-lang" and p["license"] == "MIT" and p["license-files"] == ["LICENSE"]
+    assert p["name"] == "pa-compiler" and p["license"] == "MIT" and p["license-files"] == ["LICENSE"]
     assert p["authors"] == [{"name": "cyyier"}] and p["readme"] == "README.md"
     assert p["urls"]["Homepage"] == "https://palang.dev"
     assert p["urls"]["Repository"] == "https://github.com/cyyier/pa"
