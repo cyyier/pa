@@ -335,7 +335,7 @@
               01 / Benchmarks
             </p>
             <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight leading-tight text-ink-primary">
-              Compute speed-up over CPython 3.12
+              Native speed &amp; memory footprint vs CPython 3.12 &amp; C++
             </h2>
           </div>
           <p class="font-mono text-xs text-ink-secondary tabular-nums">
@@ -494,6 +494,78 @@
           <div class="px-5 py-3 border-t hairline bg-canvas font-mono text-[11px] text-ink-muted flex flex-wrap items-center justify-between gap-2">
             <span>Higher is faster. Measured on Linux x86-64 via <span class="text-ink-secondary">examples/*/verify_*.py</span>.</span>
             <span>Pure .pa binaries link zero libpython.</span>
+          </div>
+        </div>
+
+        <!-- Memory Footprint & Native Speed Table (vs Python & C++ -O2) -->
+        <div class="mt-8 bg-surface border hairline rounded-md overflow-hidden">
+          <div class="px-5 py-3.5 border-b hairline bg-canvas flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p class="font-mono text-[11px] uppercase tracking-wider text-ink-primary font-semibold">
+                Memory Footprint &amp; Native Speed (--mode prod · Linux x86-64 Peak RSS)
+              </p>
+              <p class="text-xs text-ink-secondary mt-1">
+                Zero <code class="font-mono text-ink-primary">PyObject*</code> boxing, zero GC overhead, and contiguous C-layout buffers (<span class="font-mono text-ink-primary">8 B</span> per <code class="font-mono text-ink-primary">float64</code> vs ~32–40 B in Python <code class="font-mono text-ink-primary">list</code>).
+              </p>
+            </div>
+            <span class="font-mono text-[11px] text-accent border hairline bg-surface px-2 py-0.5 rounded shrink-0">
+              vs CPython 3.12 &amp; g++ -O2
+            </span>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="border-b hairline bg-canvas/60 font-mono text-[11px] text-ink-muted uppercase tracking-wider">
+                  <th class="px-5 py-3 font-medium">Workload</th>
+                  <th class="px-4 py-3 font-medium text-right">Pa Time</th>
+                  <th class="px-4 py-3 font-medium text-right">Baseline Time</th>
+                  <th class="px-4 py-3 font-medium text-right">Pa Peak RSS</th>
+                  <th class="px-4 py-3 font-medium text-right">Baseline RSS</th>
+                  <th class="px-5 py-3 font-medium text-right">Memory Advantage</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-white/[0.08] font-mono tabular-nums">
+                <tr>
+                  <td class="px-5 py-3.5 font-sans">
+                    <div class="font-medium text-ink-primary">5M-Float Sliding Window</div>
+                    <div class="text-[11px] text-ink-muted font-mono">10M float64 total = 76.29 MB raw · vs Python list</div>
+                  </td>
+                  <td class="px-4 py-3.5 text-right text-ink-primary font-semibold">49.5 ms</td>
+                  <td class="px-4 py-3.5 text-right text-ink-secondary">1,545.9 ms <span class="text-ink-muted">(31&times;)</span></td>
+                  <td class="px-4 py-3.5 text-right text-accent font-semibold">78.11 MB</td>
+                  <td class="px-4 py-3.5 text-right text-ink-secondary">397.68 MB</td>
+                  <td class="px-5 py-3.5 text-right text-accent font-semibold">5.1&times; smaller <span class="text-ink-muted font-normal">(~0 MB overhead)</span></td>
+                </tr>
+                <tr>
+                  <td class="px-5 py-3.5 font-sans">
+                    <div class="font-medium text-ink-primary">CRC-32 + SHA-256 Hashing</div>
+                    <div class="text-[11px] text-ink-muted font-mono">100 KB &times; 50 / &times; 20 · vs Pure Python</div>
+                  </td>
+                  <td class="px-4 py-3.5 text-right text-ink-primary font-semibold">35.5 ms</td>
+                  <td class="px-4 py-3.5 text-right text-ink-secondary">~2,000 ms <span class="text-ink-muted">(~55&times;)</span></td>
+                  <td class="px-4 py-3.5 text-right text-accent font-semibold">2.67 MB</td>
+                  <td class="px-4 py-3.5 text-right text-ink-secondary">21.1 MB</td>
+                  <td class="px-5 py-3.5 text-right text-accent font-semibold">7.9&times; smaller</td>
+                </tr>
+                <tr>
+                  <td class="px-5 py-3.5 font-sans">
+                    <div class="font-medium text-ink-primary">Raytracer (C++ Port)</div>
+                    <div class="text-[11px] text-ink-muted font-mono">400&times;225 &times; 24 SPP · vs g++ -O2 ref_rt.cpp</div>
+                  </td>
+                  <td class="px-4 py-3.5 text-right text-ink-primary font-semibold">795.4 ms</td>
+                  <td class="px-4 py-3.5 text-right text-ink-secondary">531.5 ms <span class="text-ink-muted">(C++ -O2)</span></td>
+                  <td class="px-4 py-3.5 text-right text-accent font-semibold">2.10 MB</td>
+                  <td class="px-4 py-3.5 text-right text-ink-secondary">4.25 MB <span class="text-ink-muted">(C++ -O2)</span></td>
+                  <td class="px-5 py-3.5 text-right text-accent font-semibold">2.0&times; smaller than g++ -O2</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="px-5 py-3 border-t hairline bg-canvas font-mono text-[11px] text-ink-muted flex flex-wrap items-center justify-between gap-2">
+            <span>All pure-native benchmarks measured via <span class="text-ink-secondary">/usr/bin/time -v</span> without embedded CPython bridges.</span>
+            <span>Raytracer matches <span class="text-ink-secondary">g++ -O2</span> pixel-for-pixel via <span class="text-ink-secondary">uint64</span> xorshift64*.</span>
           </div>
         </div>
       </div>

@@ -555,6 +555,32 @@
             <li><strong class="text-ink-primary">Fault reporting &amp; isolation:</strong> any violation or Python exception writes <code class="ic">pa_boundary_fault.json</code> with a replayable <code class="ic">in_payload_snapshot</code> (up to 1024 buffer elements in <code class="ic">dev</code>, 16 in <code class="ic">prod</code>). Executables exit with code <strong class="text-ink-primary">70</strong>; <code class="ic">--shared</code> libraries release the GIL and <code class="ic">longjmp</code> cleanly back to the host.</li>
             <li><strong class="text-ink-primary">Embedded &amp; relocatable:</strong> imported <code class="ic">.paw</code> sources are embedded into the binary (runtime <code class="ic">__file__</code> is <code class="ic">&lt;embedded&gt;/&lt;name&gt;.paw</code>; override with <code class="ic">PA_PATH</code>). Pure-native binaries with no <code class="ic">.paw</code> link no Python at all.</li>
           </ul>
+
+          <!-- Runtime Footprint & Isolation -->
+          <div class="bg-surface border hairline rounded-md p-4 space-y-3 text-xs">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="font-mono text-ink-primary font-semibold">Runtime Footprint &amp; Isolation (with vs without <code class="ic">.paw</code>)</div>
+              <span class="font-mono text-[11px] text-ink-muted">Linux x86-64 · Peak RSS</span>
+            </div>
+            <p class="text-ink-secondary leading-relaxed">
+              Pure-native <code class="ic">.pa</code> binaries link zero <code class="ic">libpython</code> and run in a <strong class="text-ink-primary">2–3 MB</strong> resident footprint. When a program imports a <code class="ic">.paw</code> bridge that loads PIL (~25 MB) or NumPy (~38 MB), the process RSS rises to <strong class="text-ink-primary">20–38 MB</strong> — that baseline comes from the on-demand embedded CPython runtime and third-party C extensions themselves, not from Pa&rsquo;s native runtime.
+            </p>
+            <div class="bg-canvas border hairline rounded overflow-hidden overflow-x-auto">
+              <table class="spec-table">
+                <thead>
+                  <tr><th>Example</th><th>Pure-Native Pa RSS</th><th>Pa + <code class="ic">.paw</code> RSS</th><th>Python Equivalent RSS</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td class="font-mono">pipeline_demo (NumPy)</td><td class="text-ink-muted">n/a (uses NumPy RNG)</td><td class="font-mono text-ink-primary">38.57 MB</td><td class="font-mono">41.79 MB</td></tr>
+                  <tr><td class="font-mono">hashlib_pa (stdlib verify)</td><td class="font-mono text-accent">2.67 MB</td><td class="font-mono text-ink-primary">19.86 MB</td><td class="font-mono">~21.1 MB</td></tr>
+                  <tr><td class="font-mono">raytracer (PIL PNG save)</td><td class="font-mono text-accent">2.10 MB</td><td class="font-mono text-ink-primary">27.28 MB</td><td class="font-mono text-ink-muted">4.25 MB (g++ -O2, no PIL)</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="text-ink-secondary leading-relaxed">
+              <strong class="text-ink-primary">Engineering best practice:</strong> for ultra-lightweight CLIs, edge workers, or high-concurrency micro-processes (2–3 MB RSS), stay pure-native with zero <code class="ic">.paw</code> imports. When you need NumPy/PIL/ecosystem libraries, keep large intermediate arrays in Pa&rsquo;s flat <code class="ic">Vec[T]</code> and cross <code class="ic">.paw</code> only at the final I/O or export step to avoid Python container bloat.
+            </p>
+          </div>
         </section>
 
         <!-- 08. COMPILER PIPELINE -->
