@@ -251,81 +251,82 @@
             </div>
           </div>
 
-          <!-- Right Column: Real Code Editor Window -->
+          <!-- Right Column: AI-Native Closed-Loop SVG Diagram -->
           <div class="lg:col-span-7 w-full">
             <div class="bg-surface border hairline rounded-md overflow-hidden">
-              <!-- Editor Tab Bar -->
-              <div class="flex items-center justify-between border-b hairline bg-canvas px-3">
-                <div class="flex items-center" role="tablist" aria-label="Source files">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected="true"
-                    data-tab="pa"
-                    class="editor-tab relative font-mono text-xs px-3 py-2.5 text-ink-primary border-b-2 border-accent transition-colors cursor-pointer"
-                  >
-                    main.pa
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected="false"
-                    data-tab="paw"
-                    class="editor-tab relative font-mono text-xs px-3 py-2.5 text-ink-muted hover:text-ink-secondary border-b-2 border-transparent transition-colors cursor-pointer"
-                  >
-                    data_fetcher.paw
-                  </button>
-                </div>
-                <div class="hidden sm:flex items-center gap-2 font-mono text-[11px] text-ink-muted">
-                  <span id="editor-zone-badge">native zone · LLVM -O2</span>
-                </div>
+              <!-- Card Header -->
+              <div class="flex items-center justify-between border-b hairline bg-canvas px-4 py-2.5 font-mono text-[11px]">
+                <span class="text-ink-primary font-semibold tracking-wider">AI-NATIVE EXECUTION LOOP</span>
+                <span class="text-accent">1-shot · 0 retry waste</span>
               </div>
 
-              <!-- Tab Panel 1: main.pa -->
-              <div id="panel-pa" class="editor-panel">
-                <pre class="p-4 sm:p-5 font-mono text-[12.5px] leading-[1.65] overflow-x-auto tabular-nums"><code><span class="text-ink-muted select-none mr-4">01</span><span class="tok-kw">import</span> <span class="tok-id">data_fetcher</span>
-<span class="text-ink-muted select-none mr-4">02</span>
-<span class="text-ink-muted select-none mr-4">03</span><span class="tok-id">N</span> <span class="tok-op">=</span> <span class="tok-id">64</span>
-<span class="text-ink-muted select-none mr-4">04</span><span class="tok-id">WINDOW</span> <span class="tok-op">=</span> <span class="tok-id">4</span>
-<span class="text-ink-muted select-none mr-4">05</span>
-<span class="text-ink-muted select-none mr-4">06</span><span class="tok-cm"># sliding-window mean; parameter types inferred, RAII heap Vec returned</span>
-<span class="text-ink-muted select-none mr-4">07</span><span class="tok-kw">def</span> <span class="tok-id">moving_average</span><span class="tok-op">(</span><span class="tok-id">xs</span><span class="tok-op">) -&gt;</span> <span class="tok-id">Vec</span><span class="tok-op">[</span><span class="tok-id">float</span><span class="tok-op">]:</span>
-<span class="text-ink-muted select-none mr-4">08</span>    <span class="tok-id">out</span> <span class="tok-op">= []</span>
-<span class="text-ink-muted select-none mr-4">09</span>    <span class="tok-kw">for</span> <span class="tok-id">i</span> <span class="tok-kw">in</span> <span class="tok-id">range</span><span class="tok-op">(</span><span class="tok-id">N</span> <span class="tok-op">-</span> <span class="tok-id">WINDOW</span><span class="tok-op">):</span>
-<span class="text-ink-muted select-none mr-4">10</span>        <span class="tok-id">s</span> <span class="tok-op">=</span> <span class="tok-id">0.0</span>
-<span class="text-ink-muted select-none mr-4">11</span>        <span class="tok-kw">for</span> <span class="tok-id">j</span> <span class="tok-kw">in</span> <span class="tok-id">range</span><span class="tok-op">(</span><span class="tok-id">WINDOW</span><span class="tok-op">):</span>
-<span class="text-ink-muted select-none mr-4">12</span>            <span class="tok-id">s</span> <span class="tok-op">=</span> <span class="tok-id">s</span> <span class="tok-op">+</span> <span class="tok-id">xs</span><span class="tok-op">[</span><span class="tok-id">i</span> <span class="tok-op">+</span> <span class="tok-id">j</span><span class="tok-op">]</span>
-<span class="text-ink-muted select-none mr-4">13</span>        <span class="tok-id">out</span><span class="tok-op">.</span><span class="tok-id">append</span><span class="tok-op">(</span><span class="tok-id">s</span> <span class="tok-op">/</span> <span class="tok-id">WINDOW</span><span class="tok-op">)</span>
-<span class="text-ink-muted select-none mr-4">14</span>    <span class="tok-kw">return</span> <span class="tok-id">out</span>
-<span class="text-ink-muted select-none mr-4">15</span>
-<span class="text-ink-muted select-none mr-4">16</span><span class="tok-kw">def</span> <span class="tok-id">main</span><span class="tok-op">() -&gt;</span> <span class="tok-id">int</span><span class="tok-op">:</span>
-<span class="text-ink-muted select-none mr-4">17</span>    <span class="tok-id">series</span> <span class="tok-op">=</span> <span class="tok-id">data_fetcher</span><span class="tok-op">.</span><span class="tok-id">fetch_series</span><span class="tok-op">(</span><span class="tok-id">N</span><span class="tok-op">,</span> <span class="tok-id">7</span><span class="tok-op">)</span>
-<span class="text-ink-muted select-none mr-4">18</span>    <span class="tok-id">smooth</span> <span class="tok-op">=</span> <span class="tok-id">moving_average</span><span class="tok-op">(</span><span class="tok-id">series</span><span class="tok-op">)</span>
-<span class="text-ink-muted select-none mr-4">19</span>    <span class="tok-id">p90</span> <span class="tok-op">=</span> <span class="tok-id">data_fetcher</span><span class="tok-op">.</span><span class="tok-id">percentile</span><span class="tok-op">(</span><span class="tok-id">smooth</span><span class="tok-op">,</span> <span class="tok-id">90.0</span><span class="tok-op">)</span>
-<span class="text-ink-muted select-none mr-4">20</span>    <span class="tok-id">print</span><span class="tok-op">(</span><span class="tok-id">len</span><span class="tok-op">(</span><span class="tok-id">series</span><span class="tok-op">),</span> <span class="tok-id">len</span><span class="tok-op">(</span><span class="tok-id">smooth</span><span class="tok-op">),</span> <span class="tok-id">p90</span><span class="tok-op">)</span>
-<span class="text-ink-muted select-none mr-4">21</span>    <span class="tok-kw">return</span> <span class="tok-id">0</span></code></pre>
+              <!-- Vector Closed-Loop Diagram -->
+              <div class="p-4 sm:p-6 bg-[#0B0B0D]">
+                <svg
+                  viewBox="0 0 600 400"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="w-full h-auto block"
+                  role="img"
+                  aria-label="Pa AI-Native Closed-Loop Diagram: Prompt and Skill to JSON 1-Shot Repair, Human-Auditable .pa, and LLVM -O2 Native Binary / Python .so"
+                >
+                  <defs>
+                    <radialGradient id="loop-glow" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stop-color="#C4B5FD" stop-opacity="0.16" />
+                      <stop offset="100%" stop-color="#C4B5FD" stop-opacity="0" />
+                    </radialGradient>
+                    <marker id="arrow-accent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                      <path d="M 1 1.5 L 8.5 5 L 1 8.5 z" fill="#C4B5FD" />
+                    </marker>
+                    <marker id="arrow-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                      <path d="M 1 1.5 L 8.5 5 L 1 8.5 z" fill="#5EEAD4" />
+                    </marker>
+                  </defs>
+
+                  <!-- Subtle Background Orbit & Center Glow -->
+                  <ellipse cx="300" cy="200" rx="205" ry="145" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="4 5" />
+                  <circle cx="300" cy="200" r="115" fill="url(#loop-glow)" />
+
+                  <!-- Clockwise Curved Connectors -->
+                  <path d="M 426 50 Q 505 50 503 155" stroke="#C4B5FD" stroke-width="1.5" marker-end="url(#arrow-accent)" />
+                  <path d="M 503 238 Q 505 350 433 350" stroke="#C4B5FD" stroke-width="1.5" marker-end="url(#arrow-accent)" />
+                  <path d="M 174 350 Q 95 350 97 245" stroke="#5EEAD4" stroke-width="1.5" marker-end="url(#arrow-teal)" />
+                  <path d="M 97 162 Q 95 50 167 50" stroke="#5EEAD4" stroke-width="1.5" marker-end="url(#arrow-teal)" />
+
+                  <!-- Center Anchor Badge -->
+                  <rect x="198" y="166" width="204" height="68" rx="10" fill="#09090B" stroke="rgba(196,181,253,0.45)" stroke-width="1.2" />
+                  <circle cx="243" cy="192" r="3" fill="#C4B5FD" />
+                  <text x="305" y="196" text-anchor="middle" fill="#C4B5FD" font-family="JetBrains Mono, monospace" font-size="13" font-weight="600" letter-spacing="1.2">1-SHOT LOOP</text>
+                  <text x="300" y="218" text-anchor="middle" fill="#A1A1AA" font-family="Inter, sans-serif" font-size="10.5">Slash token burn · Native C++ speed</text>
+
+                  <!-- Node 01: Top (Prompt & Skill) -->
+                  <rect x="174" y="18" width="252" height="64" rx="8" fill="#111113" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
+                  <text x="300" y="44" text-anchor="middle" fill="#FAFAFA" font-family="JetBrains Mono, monospace" font-size="12" font-weight="600">01 · Prompt + Skill</text>
+                  <text x="300" y="64" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="10">pa-coder / py-to-pa guides generation</text>
+
+                  <!-- Node 02: Right (Deterministic Repair — Purple Highlight) -->
+                  <rect x="418" y="162" width="170" height="76" rx="8" fill="#111113" stroke="#C4B5FD" stroke-width="1.5" />
+                  <text x="503" y="187" text-anchor="middle" fill="#C4B5FD" font-family="JetBrains Mono, monospace" font-size="11" font-weight="600">02 · JSON 1-Shot Repair</text>
+                  <text x="503" y="206" text-anchor="middle" fill="#FAFAFA" font-family="JetBrains Mono, monospace" font-size="10">causal_chain + patch</text>
+                  <text x="503" y="222" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="9.5">no guess loops</text>
+
+                  <!-- Node 03: Bottom (Human Review) -->
+                  <rect x="174" y="318" width="252" height="64" rx="8" fill="#111113" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
+                  <text x="300" y="344" text-anchor="middle" fill="#FAFAFA" font-family="JetBrains Mono, monospace" font-size="12" font-weight="600">03 · Human-Auditable .pa</text>
+                  <text x="300" y="364" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="10">zero-annotation bodies · flat RAII</text>
+
+                  <!-- Node 04: Left (Native Output & Interop — Teal Highlight) -->
+                  <rect x="12" y="162" width="170" height="76" rx="8" fill="#111113" stroke="rgba(94,234,212,0.55)" stroke-width="1.25" />
+                  <text x="97" y="187" text-anchor="middle" fill="#5EEAD4" font-family="JetBrains Mono, monospace" font-size="10.5" font-weight="600">04 · LLVM -O2 &amp; .so</text>
+                  <text x="97" y="206" text-anchor="middle" fill="#FAFAFA" font-family="JetBrains Mono, monospace" font-size="10">native binary</text>
+                  <text x="97" y="222" text-anchor="middle" fill="#A1A1AA" font-family="JetBrains Mono, monospace" font-size="9.5">zero-ctypes import</text>
+                </svg>
               </div>
 
-              <!-- Tab Panel 2: data_fetcher.paw -->
-              <div id="panel-paw" class="editor-panel hidden">
-                <pre class="p-4 sm:p-5 font-mono text-[12.5px] leading-[1.65] overflow-x-auto tabular-nums"><code><span class="text-ink-muted select-none mr-4">01</span><span class="tok-cm"># Crossing zone: any Python library allowed; In -&gt; Out signatures locked.</span>
-<span class="text-ink-muted select-none mr-4">02</span><span class="tok-kw">import</span> <span class="tok-id">numpy</span> <span class="tok-kw">as</span> <span class="tok-id">np</span>
-<span class="text-ink-muted select-none mr-4">03</span>
-<span class="text-ink-muted select-none mr-4">04</span>
-<span class="text-ink-muted select-none mr-4">05</span><span class="tok-kw">def</span> <span class="tok-id">fetch_series</span><span class="tok-op">(</span><span class="tok-id">n</span><span class="tok-op">:</span> <span class="tok-id">int</span><span class="tok-op">,</span> <span class="tok-id">seed</span><span class="tok-op">:</span> <span class="tok-id">int</span><span class="tok-op">) -&gt;</span> <span class="tok-id">Vec</span><span class="tok-op">[</span><span class="tok-id">float</span><span class="tok-op">]:</span>
-<span class="text-ink-muted select-none mr-4">06</span>    <span class="tok-id">rng</span> <span class="tok-op">=</span> <span class="tok-id">np</span><span class="tok-op">.</span><span class="tok-id">random</span><span class="tok-op">.</span><span class="tok-id">default_rng</span><span class="tok-op">(</span><span class="tok-id">seed</span><span class="tok-op">)</span>
-<span class="text-ink-muted select-none mr-4">07</span>    <span class="tok-kw">return</span> <span class="tok-id">np</span><span class="tok-op">.</span><span class="tok-id">cumsum</span><span class="tok-op">(</span><span class="tok-id">rng</span><span class="tok-op">.</span><span class="tok-id">normal</span><span class="tok-op">(</span><span class="tok-id">0.0</span><span class="tok-op">,</span> <span class="tok-id">1.0</span><span class="tok-op">,</span> <span class="tok-id">int</span><span class="tok-op">(</span><span class="tok-id">n</span><span class="tok-op">)))</span>
-<span class="text-ink-muted select-none mr-4">08</span>
-<span class="text-ink-muted select-none mr-4">09</span>
-<span class="text-ink-muted select-none mr-4">10</span><span class="tok-cm"># Zero-copy read-only PyMemoryView over Pa's contiguous {float64*, len, cap}</span>
-<span class="text-ink-muted select-none mr-4">11</span><span class="tok-kw">def</span> <span class="tok-id">percentile</span><span class="tok-op">(</span><span class="tok-id">arr</span><span class="tok-op">:</span> <span class="tok-id">span</span><span class="tok-op">[</span><span class="tok-id">float</span><span class="tok-op">],</span> <span class="tok-id">q</span><span class="tok-op">:</span> <span class="tok-id">float</span><span class="tok-op">) -&gt;</span> <span class="tok-id">float</span><span class="tok-op">:</span>
-<span class="text-ink-muted select-none mr-4">12</span>    <span class="tok-kw">return</span> <span class="tok-id">float</span><span class="tok-op">(</span><span class="tok-id">np</span><span class="tok-op">.</span><span class="tok-id">percentile</span><span class="tok-op">(</span><span class="tok-id">np</span><span class="tok-op">.</span><span class="tok-id">frombuffer</span><span class="tok-op">(</span><span class="tok-id">arr</span><span class="tok-op">,</span> <span class="tok-id">dtype</span><span class="tok-op">=</span><span class="tok-id">np</span><span class="tok-op">.</span><span class="tok-id">float64</span><span class="tok-op">),</span> <span class="tok-id">q</span><span class="tok-op">))</span></code></pre>
-              </div>
-
-              <!-- Editor Status Footer -->
+              <!-- Status Footer -->
               <div class="border-t hairline bg-canvas px-4 py-2 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] text-ink-muted">
                 <span>100% <span class="text-ink-secondary">ast.parse</span> compatible</span>
-                <span>RAII free inserted at scope exit · 0 GC pauses</span>
+                <span>RAII free at scope exit · 0 GC pauses</span>
               </div>
             </div>
           </div>
@@ -896,7 +897,7 @@
     </div>
   </footer>
 
-  <!-- Interactive Scripts: Copy Command + Editor Tabs + Lucide Init -->
+  <!-- Interactive Scripts: Copy Command + Mobile Menu + Lucide Init -->
   <script>
     lucide.createIcons();
 
@@ -929,38 +930,7 @@
       }, 1800);
     });
 
-    // 2. Code Editor Tabs (main.pa / data_fetcher.paw)
-    const tabs = document.querySelectorAll('.editor-tab');
-    const panels = {
-      pa: document.getElementById('panel-pa'),
-      paw: document.getElementById('panel-paw'),
-    };
-    const zoneBadge = document.getElementById('editor-zone-badge');
-
-    tabs.forEach((tab) => {
-      tab.addEventListener('click', () => {
-        const target = tab.dataset.tab;
-        tabs.forEach((t) => {
-          const active = t.dataset.tab === target;
-          t.setAttribute('aria-selected', String(active));
-          t.classList.toggle('text-ink-primary', active);
-          t.classList.toggle('border-accent', active);
-          t.classList.toggle('text-ink-muted', !active);
-          t.classList.toggle('border-transparent', !active);
-        });
-
-        Object.entries(panels).forEach(([key, el]) => {
-          el.classList.toggle('hidden', key !== target);
-        });
-
-        zoneBadge.textContent =
-          target === 'pa'
-            ? 'native zone · LLVM -O2'
-            : 'crossing zone · embedded CPython';
-      });
-    });
-
-    // Mobile navbar menu toggle
+    // 2. Mobile navbar menu toggle
     const mobileBtn = document.getElementById('mobile-menu-btn');
     const mobileMenu = document.getElementById('mobile-menu');
     const iconOpen = document.getElementById('menu-icon-open');
