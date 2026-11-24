@@ -8,8 +8,15 @@
   <link rel="apple-touch-icon" href="Pa.png" />
   <meta
     name="description"
-    content="Install pac, compile your first native .pa binary, bridge Python libraries with .paw, and ship relocatable binaries."
+    content="60-second AI workflow, standalone LLVM native builds, zero-ctypes Python .so extensions, and a human review cheatsheet for Pa."
   />
+  <link rel="canonical" href="https://palang.dev/quickstart.html" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Quickstart — Pa Language" />
+  <meta property="og:description" content="Install pac, load the built-in AI skills, and ship native LLVM binaries or direct-import Python .so modules in 60 seconds." />
+  <meta property="og:url" content="https://palang.dev/quickstart.html" />
+  <meta property="og:image" content="https://palang.dev/Pa.png" />
+  <meta name="twitter:card" content="summary" />
 
   <!-- Fonts: Inter + JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -59,6 +66,16 @@
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Subtle 1px engineering grid with radial fade-out mask */
+    .hero-grid {
+      background-size: 48px 48px;
+      background-image:
+        linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+      -webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 0%, #000 35%, transparent 100%);
+      mask-image: radial-gradient(ellipse 75% 65% at 50% 0%, #000 35%, transparent 100%);
     }
 
     .hairline {
@@ -161,481 +178,559 @@
     </nav>
   </header>
 
-  <!-- 2. DOCS LAYOUT -->
-  <div class="max-w-6xl mx-auto px-6 py-12 lg:py-16">
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-start">
+  <main>
 
-      <!-- Sticky Left Sidebar TOC -->
-      <aside class="lg:col-span-3 lg:sticky lg:top-24">
-        <p class="font-mono text-[11px] uppercase tracking-wider text-ink-muted mb-3">
-          Quickstart
-        </p>
-        <nav aria-label="On this page" class="border-l hairline space-y-1 text-xs">
-          <a href="#install" class="toc-link block pl-3.5 py-1.5 text-ink-secondary hover:text-ink-primary border-l border-transparent -ml-px transition-colors">
-            01 · Install &amp; Verify
-          </a>
-          <a href="#first-binary" class="toc-link block pl-3.5 py-1.5 text-ink-secondary hover:text-ink-primary border-l border-transparent -ml-px transition-colors">
-            02 · First Native Binary
-          </a>
-          <a href="#memory" class="toc-link block pl-3.5 py-1.5 text-ink-secondary hover:text-ink-primary border-l border-transparent -ml-px transition-colors">
-            03 · Structs &amp; mut()
-          </a>
-          <a href="#paw-bridge" class="toc-link block pl-3.5 py-1.5 text-ink-secondary hover:text-ink-primary border-l border-transparent -ml-px transition-colors">
-            04 · .paw Python Bridge
-          </a>
-          <a href="#modes" class="toc-link block pl-3.5 py-1.5 text-ink-secondary hover:text-ink-primary border-l border-transparent -ml-px transition-colors">
-            05 · Dev, Prod &amp; AI Tickets
-          </a>
-          <a href="#shipping" class="toc-link block pl-3.5 py-1.5 text-ink-secondary hover:text-ink-primary border-l border-transparent -ml-px transition-colors">
-            06 · Relocatable &amp; Shared
-          </a>
-          <a href="#skills" class="toc-link block pl-3.5 py-1.5 text-ink-secondary hover:text-ink-primary border-l border-transparent -ml-px transition-colors">
-            07 · AI Skills &amp; LSP
-          </a>
-        </nav>
+    <!-- 2. HERO / SECTION 01: 60-SECOND AI WORKFLOW -->
+    <section id="ai-workflow" class="relative overflow-hidden border-b hairline">
+      <div class="hero-grid pointer-events-none absolute inset-0" aria-hidden="true"></div>
 
-        <div class="mt-8 pt-6 border-t hairline space-y-2 font-mono text-[11px] text-ink-muted">
-          <div class="flex items-center justify-between">
-            <span>Platform</span>
-            <span class="text-ink-secondary">Linux · macOS · Win</span>
-          </div>
-          <div class="flex items-center justify-between">
-            <span>Python</span>
-            <span class="text-ink-secondary tabular-nums">3.11–3.13</span>
-          </div>
-          <div class="flex items-center justify-between">
-            <span>Backend</span>
-            <span class="text-ink-secondary">llvmlite · gcc/clang/cl</span>
-          </div>
-        </div>
-      </aside>
-
-      <!-- Main Guide Content -->
-      <main class="lg:col-span-9 min-w-0 space-y-14">
-
-        <!-- Header -->
-        <div class="pb-8 border-b hairline">
-          <div class="inline-flex items-center gap-2 font-mono text-[11px] text-ink-secondary border hairline bg-surface rounded-full px-3 py-1 mb-4">
-            <span class="w-1.5 h-1.5 rounded-full bg-accent"></span>
-            <span>5-minute guide · pac v0.1.0</span>
-          </div>
-          <h1 class="text-3xl sm:text-4xl font-semibold tracking-tight leading-tight text-ink-primary">
-            Quickstart
-          </h1>
-          <p class="mt-3 text-[15px] leading-relaxed text-ink-secondary max-w-2xl">
-            Install <code class="font-mono text-xs text-ink-primary bg-surface border hairline px-1.5 py-0.5 rounded">pac</code>,
-            compile a standalone LLVM binary from Python syntax, bridge NumPy through a typed
-            <code class="font-mono text-xs text-ink-primary bg-surface border hairline px-1.5 py-0.5 rounded">.paw</code>
-            module, and bundle a relocatable release.
-          </p>
-        </div>
-
-        <!-- STEP 1: Install & Verify -->
-        <section id="install" class="scroll-mt-20 space-y-4">
-          <div class="flex items-baseline gap-3">
-            <span class="font-mono text-xs text-accent tabular-nums">01</span>
-            <h2 class="text-xl font-semibold tracking-tight text-ink-primary">Install &amp; verify toolchain</h2>
-          </div>
-          <p class="text-sm leading-relaxed text-ink-secondary">
-            Requires Linux x86-64, macOS, or Windows x64, a C compiler (<code class="font-mono text-xs text-ink-primary">gcc</code>, <code class="font-mono text-xs text-ink-primary">clang</code>, or MSVC <code class="font-mono text-xs text-ink-primary">cl</code>), and CPython 3.11–3.13
-            with development headers and a shared Python library
-            (e.g. <code class="font-mono text-xs text-ink-primary">uv python install 3.12</code>).
-          </p>
-
-          <div class="bg-surface border hairline rounded-md overflow-hidden">
-            <div class="px-3.5 py-2 border-b hairline bg-canvas flex items-center justify-between">
-              <span class="font-mono text-[11px] text-ink-muted">shell</span>
-              <button
-                type="button"
-                data-copy="pip install pa-lang&#10;pac doctor"
-                class="copy-trigger inline-flex items-center gap-1.5 font-mono text-[11px] text-ink-secondary hover:text-ink-primary border hairline bg-surface px-2 py-0.5 rounded transition-colors cursor-pointer"
-              >
-                <i data-lucide="copy" class="w-3 h-3"></i>
-                <span>Copy</span>
-              </button>
+      <div class="relative max-w-6xl mx-auto px-6 pt-14 pb-16 lg:pt-20 lg:pb-20">
+        <!-- Header + Anchor Strip -->
+        <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-10 border-b hairline">
+          <div class="max-w-2xl">
+            <div class="inline-flex items-center gap-2 font-mono text-[11px] text-ink-secondary border hairline bg-surface rounded-full px-3 py-1 mb-5">
+              <span class="w-1.5 h-1.5 rounded-full bg-accent"></span>
+              <span>60-second setup · pac v0.1.0 · CPython 3.11–3.13</span>
             </div>
-            <pre class="p-4 font-mono text-[12.5px] leading-[1.65] overflow-x-auto"><code><span class="text-ink-muted select-none">$ </span><span class="tok-id">pip install pa-lang</span>
-<span class="text-ink-muted select-none">$ </span><span class="tok-id">pac doctor</span></code></pre>
-          </div>
-
-          <p class="text-xs leading-relaxed text-ink-muted font-mono">
-            pac doctor checks your C compiler (gcc/clang/cl), llvmlite, Python.h, and shared Python library before your first build.
-          </p>
-        </section>
-
-        <!-- STEP 2: First Native Binary -->
-        <section id="first-binary" class="scroll-mt-20 space-y-4">
-          <div class="flex items-baseline gap-3">
-            <span class="font-mono text-xs text-accent tabular-nums">02</span>
-            <h2 class="text-xl font-semibold tracking-tight text-ink-primary">Compile your first native binary</h2>
-          </div>
-          <p class="text-sm leading-relaxed text-ink-secondary">
-            Save <code class="font-mono text-xs text-ink-primary">hello.pa</code>. Function bodies carry zero type
-            annotations—declare only the return type (<code class="font-mono text-xs text-ink-primary">-&gt; T</code>),
-            and bidirectional inference resolves the rest.
-          </p>
-
-          <div class="bg-surface border hairline rounded-md overflow-hidden">
-            <div class="px-3.5 py-2 border-b hairline bg-canvas flex items-center justify-between">
-              <span class="font-mono text-[11px] text-ink-primary">hello.pa</span>
-              <button
-                type="button"
-                data-copy="def sum_squares(xs) -> float:&#10;    total = 0.0&#10;    for x in xs:&#10;        total = total + x * x&#10;    return total&#10;&#10;&#10;def main() -> int:&#10;    data = [1.0, 2.0, 3.0, 4.0]&#10;    print(sum_squares(data))&#10;    return 0"
-                class="copy-trigger inline-flex items-center gap-1.5 font-mono text-[11px] text-ink-secondary hover:text-ink-primary border hairline bg-surface px-2 py-0.5 rounded transition-colors cursor-pointer"
-              >
-                <i data-lucide="copy" class="w-3 h-3"></i>
-                <span>Copy</span>
-              </button>
-            </div>
-            <pre class="p-4 font-mono text-[12.5px] leading-[1.65] overflow-x-auto tabular-nums"><code><span class="text-ink-muted select-none mr-4">01</span><span class="tok-kw">def</span> <span class="tok-id">sum_squares</span><span class="tok-op">(</span><span class="tok-id">xs</span><span class="tok-op">) -&gt;</span> <span class="tok-id">float</span><span class="tok-op">:</span>
-<span class="text-ink-muted select-none mr-4">02</span>    <span class="tok-id">total</span> <span class="tok-op">=</span> <span class="tok-id">0.0</span>
-<span class="text-ink-muted select-none mr-4">03</span>    <span class="tok-kw">for</span> <span class="tok-id">x</span> <span class="tok-kw">in</span> <span class="tok-id">xs</span><span class="tok-op">:</span>
-<span class="text-ink-muted select-none mr-4">04</span>        <span class="tok-id">total</span> <span class="tok-op">=</span> <span class="tok-id">total</span> <span class="tok-op">+</span> <span class="tok-id">x</span> <span class="tok-op">*</span> <span class="tok-id">x</span>
-<span class="text-ink-muted select-none mr-4">05</span>    <span class="tok-kw">return</span> <span class="tok-id">total</span>
-<span class="text-ink-muted select-none mr-4">06</span>
-<span class="text-ink-muted select-none mr-4">07</span><span class="tok-kw">def</span> <span class="tok-id">main</span><span class="tok-op">() -&gt;</span> <span class="tok-id">int</span><span class="tok-op">:</span>
-<span class="text-ink-muted select-none mr-4">08</span>    <span class="tok-id">data</span> <span class="tok-op">= [</span><span class="tok-id">1.0</span><span class="tok-op">,</span> <span class="tok-id">2.0</span><span class="tok-op">,</span> <span class="tok-id">3.0</span><span class="tok-op">,</span> <span class="tok-id">4.0</span><span class="tok-op">]</span>
-<span class="text-ink-muted select-none mr-4">09</span>    <span class="tok-id">print</span><span class="tok-op">(</span><span class="tok-id">sum_squares</span><span class="tok-op">(</span><span class="tok-id">data</span><span class="tok-op">))</span>
-<span class="text-ink-muted select-none mr-4">10</span>    <span class="tok-kw">return</span> <span class="tok-id">0</span></code></pre>
-          </div>
-
-          <div class="bg-surface border hairline rounded-md overflow-hidden">
-            <div class="px-3.5 py-2 border-b hairline bg-canvas flex items-center justify-between">
-              <span class="font-mono text-[11px] text-ink-muted">build &amp; run</span>
-              <button
-                type="button"
-                data-copy="pac check hello.pa&#10;pac build hello.pa -o hello && ./hello"
-                class="copy-trigger inline-flex items-center gap-1.5 font-mono text-[11px] text-ink-secondary hover:text-ink-primary border hairline bg-surface px-2 py-0.5 rounded transition-colors cursor-pointer"
-              >
-                <i data-lucide="copy" class="w-3 h-3"></i>
-                <span>Copy</span>
-              </button>
-            </div>
-            <pre class="p-4 font-mono text-[12.5px] leading-[1.65] overflow-x-auto"><code><span class="text-ink-muted select-none">$ </span><span class="tok-id">pac check hello.pa</span>
-<span class="text-ink-muted select-none">$ </span><span class="tok-id">pac build hello.pa -o hello &amp;&amp; ./hello</span>
-<span class="tok-op">30.0</span></code></pre>
-          </div>
-
-          <div class="border hairline bg-surface rounded-md px-4 py-3 font-mono text-xs text-ink-secondary">
-            Pure <span class="text-ink-primary">.pa</span> binaries link <span class="text-accent">zero</span> Python runtime.
-            <span class="text-ink-primary">data</span> compiles to a stack-allocated <span class="text-ink-primary">[4 x double]</span>.
-          </div>
-        </section>
-
-        <!-- STEP 3: Structs, Borrowing & mut() -->
-        <section id="memory" class="scroll-mt-20 space-y-4">
-          <div class="flex items-baseline gap-3">
-            <span class="font-mono text-xs text-accent tabular-nums">03</span>
-            <h2 class="text-xl font-semibold tracking-tight text-ink-primary">Structs, borrowing &amp; <code class="font-mono text-lg">mut()</code></h2>
-          </div>
-          <p class="text-sm leading-relaxed text-ink-secondary">
-            Containers and <code class="font-mono text-xs text-ink-primary">@struct</code> records are passed as
-            zero-copy read-only borrows. Any callee that mutates a parameter requires an explicit
-            <code class="font-mono text-xs text-ink-primary">mut(...)</code> at the call site (<code class="font-mono text-xs text-ink-primary">PA_E050</code>).
-          </p>
-
-          <div class="bg-surface border hairline rounded-md overflow-hidden">
-            <div class="px-3.5 py-2 border-b hairline bg-canvas flex items-center justify-between">
-              <span class="font-mono text-[11px] text-ink-primary">vec_ops.pa</span>
-              <span class="font-mono text-[11px] text-ink-muted">C layout · AoS</span>
-            </div>
-            <pre class="p-4 font-mono text-[12.5px] leading-[1.65] overflow-x-auto tabular-nums"><code><span class="text-ink-muted select-none mr-4">01</span><span class="tok-kw">@struct</span>
-<span class="text-ink-muted select-none mr-4">02</span><span class="tok-kw">class</span> <span class="tok-id">Point</span><span class="tok-op">:</span>
-<span class="text-ink-muted select-none mr-4">03</span>    <span class="tok-id">x</span><span class="tok-op">:</span> <span class="tok-id">float</span>
-<span class="text-ink-muted select-none mr-4">04</span>    <span class="tok-id">y</span><span class="tok-op">:</span> <span class="tok-id">float</span>
-<span class="text-ink-muted select-none mr-4">05</span>
-<span class="text-ink-muted select-none mr-4">06</span><span class="tok-kw">def</span> <span class="tok-id">scale_all</span><span class="tok-op">(</span><span class="tok-id">pts</span><span class="tok-op">,</span> <span class="tok-id">factor</span><span class="tok-op">) -&gt;</span> <span class="tok-id">void</span><span class="tok-op">:</span>
-<span class="text-ink-muted select-none mr-4">07</span>    <span class="tok-kw">for</span> <span class="tok-id">i</span> <span class="tok-kw">in</span> <span class="tok-id">range</span><span class="tok-op">(</span><span class="tok-id">len</span><span class="tok-op">(</span><span class="tok-id">pts</span><span class="tok-op">)):</span>
-<span class="text-ink-muted select-none mr-4">08</span>        <span class="tok-id">pts</span><span class="tok-op">[</span><span class="tok-id">i</span><span class="tok-op">].</span><span class="tok-id">x</span> <span class="tok-op">=</span> <span class="tok-id">pts</span><span class="tok-op">[</span><span class="tok-id">i</span><span class="tok-op">].</span><span class="tok-id">x</span> <span class="tok-op">*</span> <span class="tok-id">factor</span>
-<span class="text-ink-muted select-none mr-4">09</span>        <span class="tok-id">pts</span><span class="tok-op">[</span><span class="tok-id">i</span><span class="tok-op">].</span><span class="tok-id">y</span> <span class="tok-op">=</span> <span class="tok-id">pts</span><span class="tok-op">[</span><span class="tok-id">i</span><span class="tok-op">].</span><span class="tok-id">y</span> <span class="tok-op">*</span> <span class="tok-id">factor</span>
-<span class="text-ink-muted select-none mr-4">10</span>
-<span class="text-ink-muted select-none mr-4">11</span><span class="tok-kw">def</span> <span class="tok-id">main</span><span class="tok-op">() -&gt;</span> <span class="tok-id">int</span><span class="tok-op">:</span>
-<span class="text-ink-muted select-none mr-4">12</span>    <span class="tok-id">pts</span> <span class="tok-op">= [</span><span class="tok-id">Point</span><span class="tok-op">(</span><span class="tok-id">x</span><span class="tok-op">=</span><span class="tok-id">1.0</span><span class="tok-op">,</span> <span class="tok-id">y</span><span class="tok-op">=</span><span class="tok-id">2.0</span><span class="tok-op">),</span> <span class="tok-id">Point</span><span class="tok-op">(</span><span class="tok-id">x</span><span class="tok-op">=</span><span class="tok-id">3.0</span><span class="tok-op">,</span> <span class="tok-id">y</span><span class="tok-op">=</span><span class="tok-id">4.0</span><span class="tok-op">)]</span>
-<span class="text-ink-muted select-none mr-4">13</span>    <span class="tok-id">scale_all</span><span class="tok-op">(</span><span class="tok-kw">mut</span><span class="tok-op">(</span><span class="tok-id">pts</span><span class="tok-op">),</span> <span class="tok-id">2.5</span><span class="tok-op">)</span>
-<span class="text-ink-muted select-none mr-4">14</span>    <span class="tok-id">print</span><span class="tok-op">(</span><span class="tok-id">pts</span><span class="tok-op">[</span><span class="tok-id">0</span><span class="tok-op">].</span><span class="tok-id">x</span><span class="tok-op">,</span> <span class="tok-id">pts</span><span class="tok-op">[</span><span class="tok-id">1</span><span class="tok-op">].</span><span class="tok-id">y</span><span class="tok-op">)</span>
-<span class="text-ink-muted select-none mr-4">15</span>    <span class="tok-kw">return</span> <span class="tok-id">0</span></code></pre>
-          </div>
-
-          <!-- Compact Rules Table -->
-          <div class="bg-surface border hairline rounded-md overflow-hidden">
-            <table class="w-full text-left border-collapse">
-              <thead>
-                <tr class="border-b hairline bg-canvas font-mono text-[11px] text-ink-muted">
-                  <th class="px-4 py-2.5 font-medium">FORM</th>
-                  <th class="px-4 py-2.5 font-medium">STORAGE &amp; LIFETIME</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-white/[0.08] text-xs">
-                <tr>
-                  <td class="px-4 py-2.5 font-mono text-ink-primary">[0.0] * 16</td>
-                  <td class="px-4 py-2.5 text-ink-secondary">Fixed stack array <code class="font-mono text-ink-primary">[16 x f64]</code> (constant N, ≤ 64 KB)</td>
-                </tr>
-                <tr>
-                  <td class="px-4 py-2.5 font-mono text-ink-primary">[0.0] * n</td>
-                  <td class="px-4 py-2.5 text-ink-secondary">Contiguous heap <code class="font-mono text-ink-primary">Vec[float]</code>, auto-freed by RAII at scope exit</td>
-                </tr>
-                <tr>
-                  <td class="px-4 py-2.5 font-mono text-ink-primary">[0] * 0 / [0.0] * 0</td>
-                  <td class="px-4 py-2.5 text-ink-secondary">Typed empty dynamic <code class="font-mono text-ink-primary">Vec</code> (100% valid Python)</td>
-                </tr>
-                <tr>
-                  <td class="px-4 py-2.5 font-mono text-ink-primary">a[len(a) - 1]</td>
-                  <td class="px-4 py-2.5 text-ink-secondary">Bounds-checked in dev; negative indexes (<code class="font-mono text-ink-primary">a[-1]</code>) are rejected</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <!-- STEP 4: .paw Python Bridge -->
-        <section id="paw-bridge" class="scroll-mt-20 space-y-4">
-          <div class="flex items-baseline gap-3">
-            <span class="font-mono text-xs text-accent tabular-nums">04</span>
-            <h2 class="text-xl font-semibold tracking-tight text-ink-primary">Bridge Python libraries with <code class="font-mono text-lg">.paw</code></h2>
-          </div>
-          <p class="text-sm leading-relaxed text-ink-secondary">
-            Native <code class="font-mono text-xs text-ink-primary">.pa</code> files cannot import third-party Python packages
-            (<code class="font-mono text-xs text-ink-primary">PA_E001</code>). Quarantine them in a
-            <code class="font-mono text-xs text-ink-primary">.paw</code> crossing module with locked
-            <code class="font-mono text-xs text-ink-primary">In -&gt; Out</code> signatures.
-          </p>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="bg-surface border hairline rounded-md overflow-hidden">
-              <div class="px-3.5 py-2 border-b hairline bg-canvas flex items-center justify-between font-mono text-[11px]">
-                <span class="text-ink-primary">stats.paw</span>
-                <span class="text-ink-muted">crossing zone</span>
-              </div>
-              <pre class="p-4 font-mono text-[12px] leading-[1.65] overflow-x-auto"><code><span class="tok-kw">import</span> <span class="tok-id">numpy</span> <span class="tok-kw">as</span> <span class="tok-id">np</span>
-
-<span class="tok-kw">def</span> <span class="tok-id">percentile</span><span class="tok-op">(</span><span class="tok-id">arr</span><span class="tok-op">:</span> <span class="tok-id">span</span><span class="tok-op">[</span><span class="tok-id">float</span><span class="tok-op">],</span> <span class="tok-id">q</span><span class="tok-op">:</span> <span class="tok-id">float</span><span class="tok-op">) -&gt;</span> <span class="tok-id">float</span><span class="tok-op">:</span>
-    <span class="tok-id">view</span> <span class="tok-op">=</span> <span class="tok-id">np</span><span class="tok-op">.</span><span class="tok-id">frombuffer</span><span class="tok-op">(</span><span class="tok-id">arr</span><span class="tok-op">,</span> <span class="tok-id">dtype</span><span class="tok-op">=</span><span class="tok-id">np</span><span class="tok-op">.</span><span class="tok-id">float64</span><span class="tok-op">)</span>
-    <span class="tok-kw">return</span> <span class="tok-id">float</span><span class="tok-op">(</span><span class="tok-id">np</span><span class="tok-op">.</span><span class="tok-id">percentile</span><span class="tok-op">(</span><span class="tok-id">view</span><span class="tok-op">,</span> <span class="tok-id">q</span><span class="tok-op">))</span></code></pre>
-            </div>
-
-            <div class="bg-surface border hairline rounded-md overflow-hidden">
-              <div class="px-3.5 py-2 border-b hairline bg-canvas flex items-center justify-between font-mono text-[11px]">
-                <span class="text-ink-primary">main.pa</span>
-                <span class="text-ink-muted">native zone</span>
-              </div>
-              <pre class="p-4 font-mono text-[12px] leading-[1.65] overflow-x-auto"><code><span class="tok-kw">import</span> <span class="tok-id">stats</span>
-
-<span class="tok-kw">def</span> <span class="tok-id">main</span><span class="tok-op">() -&gt;</span> <span class="tok-id">int</span><span class="tok-op">:</span>
-    <span class="tok-id">vals</span> <span class="tok-op">= [</span><span class="tok-id">10.0</span><span class="tok-op">,</span> <span class="tok-id">20.0</span><span class="tok-op">,</span> <span class="tok-id">30.0</span><span class="tok-op">,</span> <span class="tok-id">40.0</span><span class="tok-op">,</span> <span class="tok-id">50.0</span><span class="tok-op">]</span>
-    <span class="tok-id">print</span><span class="tok-op">(</span><span class="tok-id">stats</span><span class="tok-op">.</span><span class="tok-id">percentile</span><span class="tok-op">(</span><span class="tok-id">vals</span><span class="tok-op">,</span> <span class="tok-id">90.0</span><span class="tok-op">))</span>
-    <span class="tok-kw">return</span> <span class="tok-id">0</span></code></pre>
-            </div>
-          </div>
-
-          <ul class="space-y-1.5 text-xs text-ink-secondary list-disc list-inside">
-            <li><code class="font-mono text-ink-primary">span[T]</code> crosses via read-only <code class="font-mono text-ink-primary">PyMemoryView_FromMemory</code> (zero copy).</li>
-            <li>Calling a <code class="font-mono text-ink-primary">.paw</code> function inside a loop is rejected (<code class="font-mono text-ink-primary">PA_E002</code>)—pack batches on the Pa side first.</li>
-            <li><code class="font-mono text-ink-primary">.paw</code> sources are embedded in the binary at build time; use <code class="font-mono text-ink-primary">PA_PATH</code> to live-override during dev.</li>
-          </ul>
-        </section>
-
-        <!-- STEP 5: Dev, Prod & AI Diagnostics -->
-        <section id="modes" class="scroll-mt-20 space-y-4">
-          <div class="flex items-baseline gap-3">
-            <span class="font-mono text-xs text-accent tabular-nums">05</span>
-            <h2 class="text-xl font-semibold tracking-tight text-ink-primary">Dev vs. prod &amp; AI repair tickets</h2>
-          </div>
-          <p class="text-sm leading-relaxed text-ink-secondary">
-            Develop with <code class="font-mono text-xs text-ink-primary">--mode dev</code> (default) for bounds checks,
-            deep <code class="font-mono text-xs text-ink-primary">.paw</code> static lint, and full boundary customs.
-            Switch to <code class="font-mono text-xs text-ink-primary">--mode prod</code> once dev is green.
-          </p>
-
-          <div class="bg-surface border hairline rounded-md overflow-hidden">
-            <div class="px-3.5 py-2 border-b hairline bg-canvas flex items-center justify-between">
-              <span class="font-mono text-[11px] text-ink-muted">check &amp; build modes</span>
-              <button
-                type="button"
-                data-copy="pac check --ai-diagnostic .&#10;pac build main.pa --mode prod -o app"
-                class="copy-trigger inline-flex items-center gap-1.5 font-mono text-[11px] text-ink-secondary hover:text-ink-primary border hairline bg-surface px-2 py-0.5 rounded transition-colors cursor-pointer"
-              >
-                <i data-lucide="copy" class="w-3 h-3"></i>
-                <span>Copy</span>
-              </button>
-            </div>
-            <pre class="p-4 font-mono text-[12.5px] leading-[1.65] overflow-x-auto"><code><span class="tok-cm"># Emit self-contained JSON repair tickets for AI agents</span>
-<span class="text-ink-muted select-none">$ </span><span class="tok-id">pac check --ai-diagnostic .</span>
-
-<span class="tok-cm"># Ship lean native binary once dev checks pass</span>
-<span class="text-ink-muted select-none">$ </span><span class="tok-id">pac build main.pa --mode prod -o app</span></code></pre>
-          </div>
-
-          <p class="text-xs leading-relaxed text-ink-secondary">
-            Any runtime or boundary violation exits with code <code class="font-mono text-ink-primary">70</code> and writes
-            <code class="font-mono text-ink-primary">pa_runtime_fault.json</code> or
-            <code class="font-mono text-ink-primary">pa_boundary_fault.json</code> with a replayable payload snapshot.
-          </p>
-        </section>
-
-        <!-- STEP 6: Shipping & Relocatable Binaries -->
-        <section id="shipping" class="scroll-mt-20 space-y-4">
-          <div class="flex items-baseline gap-3">
-            <span class="font-mono text-xs text-accent tabular-nums">06</span>
-            <h2 class="text-xl font-semibold tracking-tight text-ink-primary">Relocatable binaries &amp; shared libraries</h2>
-          </div>
-          <p class="text-sm leading-relaxed text-ink-secondary">
-            To deploy a <code class="font-mono text-xs text-ink-primary">.paw</code>-enabled binary to another machine,
-            build with <code class="font-mono text-xs text-ink-primary">--relocatable</code> and bundle
-            Python's shared library + trimmed stdlib next to the executable
-            (found automatically via <code class="font-mono text-xs text-ink-primary">$ORIGIN</code> on Linux, <code class="font-mono text-xs text-ink-primary">@loader_path</code> on macOS, or the app directory on Windows).
-          </p>
-
-          <div class="bg-surface border hairline rounded-md overflow-hidden">
-            <div class="px-3.5 py-2 border-b hairline bg-canvas flex items-center justify-between">
-              <span class="font-mono text-[11px] text-ink-muted">deploy</span>
-              <button
-                type="button"
-                data-copy="pac build main.pa --mode prod --relocatable -o app&#10;pac doctor ./app&#10;pac bundle ./app --with-stdlib"
-                class="copy-trigger inline-flex items-center gap-1.5 font-mono text-[11px] text-ink-secondary hover:text-ink-primary border hairline bg-surface px-2 py-0.5 rounded transition-colors cursor-pointer"
-              >
-                <i data-lucide="copy" class="w-3 h-3"></i>
-                <span>Copy</span>
-              </button>
-            </div>
-            <pre class="p-4 font-mono text-[12.5px] leading-[1.65] overflow-x-auto"><code><span class="text-ink-muted select-none">$ </span><span class="tok-id">pac build main.pa --mode prod --relocatable -o app</span>
-<span class="text-ink-muted select-none">$ </span><span class="tok-id">pac doctor ./app</span>
-<span class="text-ink-muted select-none">$ </span><span class="tok-id">pac bundle ./app --with-stdlib</span></code></pre>
-          </div>
-
-          <div class="border hairline bg-surface rounded-md p-4 space-y-2.5">
-            <div class="font-mono text-[11px] text-ink-muted">RUNTIME RESOLUTION &amp; TROUBLESHOOTING</div>
-            <ul class="text-xs leading-relaxed text-ink-secondary space-y-1.5 list-disc pl-4">
-              <li>
-                <strong class="text-ink-primary">Embedded <code class="font-mono">.paw</code> sources:</strong>
-                compiled binaries embed imported <code class="font-mono">.paw</code> files (no hard-coded source paths).
-                Set <code class="font-mono text-ink-primary">PA_PATH=dir1:dir2</code> to prefer live <code class="font-mono">.paw</code> files while developing.
-              </li>
-              <li>
-                <strong class="text-ink-primary">Python discovery order:</strong>
-                home <code class="font-mono text-ink-primary">PA_PYTHON_HOME</code> &gt; <code class="font-mono text-ink-primary">PYTHONHOME</code> &gt;
-                <code class="font-mono text-ink-primary">./python-home</code> &gt; build-time default;
-                packages <code class="font-mono text-ink-primary">PA_PYPATH</code> &gt; <code class="font-mono text-ink-primary">$VIRTUAL_ENV</code> site-packages.
-                Pure-native programs (no <code class="font-mono">.paw</code>) link no Python at all.
-              </li>
-              <li>
-                <strong class="text-ink-primary">Missing <code class="font-mono">libpython</code> or stdlib:</strong>
-                a missing <code class="font-mono">libpython</code> fails in the dynamic loader (exit 127); run
-                <code class="font-mono text-ink-primary">pac doctor ./app</code> and <code class="font-mono text-ink-primary">pac bundle ./app --with-stdlib</code>.
-                An unusable Python home produces a friendly <code class="font-mono text-ink-primary">"direction": "STARTUP"</code> fault (exit 70) in
-                <code class="font-mono text-ink-primary">pa_boundary_fault.json</code> (override path with <code class="font-mono text-ink-primary">PA_FAULT_PATH</code>).
-              </li>
-            </ul>
-          </div>
-
-          <div class="border hairline bg-surface rounded-md p-4 space-y-2">
-            <div class="font-mono text-[11px] text-ink-muted">FRAMEWORK SHELLS (FASTAPI / FLASK / STREAMLIT)</div>
-            <p class="text-xs leading-relaxed text-ink-secondary">
-              Compile <code class="font-mono text-ink-primary">@export</code> functions with
-              <code class="font-mono text-ink-primary">pac build lib.pa --shared -o lib.so</code>.
-              Faults are caught by a <code class="font-mono text-ink-primary">setjmp</code> guard and exposed via
-              <code class="font-mono text-ink-primary">pa_error_code()</code> without crashing the host server.
+            <h1 class="text-3xl sm:text-4xl font-semibold tracking-tight leading-[1.12] text-ink-primary">
+              Quickstart
+            </h1>
+            <p class="mt-3 text-sm sm:text-[15px] leading-relaxed text-ink-secondary">
+              Written by AI, effortlessly reviewed by humans. Install <code class="font-mono text-xs text-ink-primary">pac</code>,
+              load the bundled agent skills, and start shipping native LLVM binaries without memorizing a new syntax manual first.
             </p>
           </div>
-        </section>
 
-        <!-- STEP 7: AI Skills & LSP -->
-        <section id="skills" class="scroll-mt-20 space-y-4">
-          <div class="flex items-baseline gap-3">
-            <span class="font-mono text-xs text-accent tabular-nums">07</span>
-            <h2 class="text-xl font-semibold tracking-tight text-ink-primary">AI skills &amp; editor tooling</h2>
+          <nav aria-label="Quickstart sections" class="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+            <a href="#ai-workflow" class="px-2.5 py-1.5 rounded border border-accent/40 bg-accent/10 text-accent transition-colors">
+              01 · 60s AI Workflow
+            </a>
+            <a href="#deep-dive" class="px-2.5 py-1.5 rounded border hairline bg-surface text-ink-secondary hover:text-ink-primary transition-colors">
+              02 · Manual Deep Dive
+            </a>
+            <a href="#cheatsheet" class="px-2.5 py-1.5 rounded border hairline bg-surface text-ink-secondary hover:text-ink-primary transition-colors">
+              03 · Human Review Cheatsheet
+            </a>
+          </nav>
+        </div>
+
+        <!-- Section 01 Label -->
+        <div id="install" class="mt-10 mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+          <div>
+            <p class="font-mono text-[11px] uppercase tracking-wider text-accent mb-1.5">
+              01 / 60-Second AI Workflow
+            </p>
+            <h2 class="text-xl sm:text-2xl font-semibold tracking-tight text-ink-primary">
+              Three steps from zero to native LLVM output.
+            </h2>
           </div>
-          <p class="text-sm leading-relaxed text-ink-secondary">
-            Print any <code class="font-mono text-xs text-ink-primary">SKILL.md</code> straight to stdout for your agent, or install all three skills into Claude Code, Cursor, Codex, or Antigravity in one command:
-          </p>
+          <span class="font-mono text-[11px] text-ink-muted">Linux · macOS · Windows</span>
+        </div>
 
-          <div class="bg-surface border hairline rounded-md overflow-hidden">
-            <div class="px-3.5 py-2 border-b hairline bg-canvas flex items-center justify-between">
-              <span class="font-mono text-[11px] text-ink-muted">pac skill</span>
-              <button
-                type="button"
-                data-copy="pac skill --list&#10;pac skill pa-coder&#10;pac skill --install claude&#10;pac skill --install cursor"
-                class="copy-trigger inline-flex items-center gap-1.5 font-mono text-[11px] text-ink-secondary hover:text-ink-primary border hairline bg-surface px-2 py-0.5 rounded transition-colors cursor-pointer"
-              >
-                <i data-lucide="copy" class="w-3 h-3"></i>
-                <span>Copy</span>
-              </button>
+        <!-- 3-Step Minimalist Workflow Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+          <!-- Step 1: Install & Doctor -->
+          <div class="lg:col-span-5 bg-surface border hairline rounded-md flex flex-col justify-between overflow-hidden">
+            <div class="p-5">
+              <div class="flex items-center justify-between gap-2 mb-3">
+                <span class="font-mono text-[11px] text-accent font-semibold">STEP 01 · INSTALL &amp; VERIFY</span>
+                <span class="font-mono text-[11px] text-ink-muted">~15s</span>
+              </div>
+              <p class="text-xs leading-relaxed text-ink-secondary mb-4">
+                Install the compiler CLI, LSP server, and bundled skills from PyPI, then verify
+                <code class="font-mono text-ink-primary">llvmlite</code>, <code class="font-mono text-ink-primary">Python.h</code>, and your system C linker.
+              </p>
+              <div class="bg-canvas border hairline rounded-md overflow-hidden">
+                <div class="px-3.5 py-2 border-b hairline flex items-center justify-between font-mono text-[11px] text-ink-muted">
+                  <span>terminal</span>
+                  <button
+                    type="button"
+                    class="copy-trigger inline-flex items-center gap-1.5 text-ink-secondary hover:text-ink-primary border hairline bg-surface px-2 py-0.5 rounded transition-colors cursor-pointer"
+                    data-copy="pip install pa-lang&#10;pac doctor"
+                  >
+                    <i data-lucide="copy" class="w-3 h-3"></i>
+                    <span>Copy</span>
+                  </button>
+                </div>
+                <pre class="p-3.5 font-mono text-xs leading-relaxed overflow-x-auto"><code><span class="tok-op">$</span> <span class="tok-id">pip install pa-lang</span>
+<span class="tok-op">$</span> <span class="tok-id">pac doctor</span></code></pre>
+              </div>
             </div>
-            <pre class="p-4 font-mono text-[12.5px] leading-[1.65] overflow-x-auto"><code><span class="text-ink-muted select-none">$ </span><span class="tok-id">pac skill --list</span>                <span class="tok-cm"># list bundled skills</span>
-<span class="text-ink-muted select-none">$ </span><span class="tok-id">pac skill pa-coder</span>              <span class="tok-cm"># print SKILL.md to stdout (or `pac skill` for all)</span>
-<span class="text-ink-muted select-none">$ </span><span class="tok-id">pac skill --install claude</span>      <span class="tok-cm"># install to .claude/skills/ (+ --global for ~/)</span>
-<span class="text-ink-muted select-none">$ </span><span class="tok-id">pac skill --install cursor</span>      <span class="tok-cm"># also supports: codex, copilot, github, antigravity, or &lt;dir&gt;</span></code></pre>
+            <div class="px-5 py-2.5 border-t hairline bg-canvas/50 font-mono text-[11px] text-ink-muted">
+              Checks <span class="text-ink-secondary">clang / gcc / cl</span>, LLVM backend, and CPython headers.
+            </div>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <a
-              href="https://github.com/cyyier/pa/blob/main/skills/pa-coder/SKILL.md"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="bg-surface border hairline hover:border-white/20 rounded-md p-4 transition-colors block"
-            >
-              <div class="font-mono text-xs font-semibold text-ink-primary">pa-coder</div>
-              <p class="mt-1.5 text-xs leading-relaxed text-ink-secondary">
-                Scaffold new Host-First projects, contiguous structs, and .paw boundaries.
+          <!-- Step 2: One-Click Agent Skills -->
+          <div id="skills" class="lg:col-span-7 bg-surface border hairline rounded-md flex flex-col justify-between overflow-hidden">
+            <div class="p-5">
+              <div class="flex items-center justify-between gap-2 mb-3">
+                <span class="font-mono text-[11px] text-accent font-semibold">STEP 02 · INSTALL BUILT-IN AGENT SKILLS</span>
+                <span class="font-mono text-[11px] text-[#5EEAD4]">3 skills bundled</span>
+              </div>
+              <p class="text-xs leading-relaxed text-ink-secondary mb-4">
+                Install all three bundled <code class="font-mono text-ink-primary">SKILL.md</code> guides in one command.
+                Supported targets: <code class="font-mono text-ink-primary">claude</code>, <code class="font-mono text-ink-primary">cursor</code>,
+                <code class="font-mono text-ink-primary">codex</code>, <code class="font-mono text-ink-primary">copilot</code>,
+                <code class="font-mono text-ink-primary">github</code>, <code class="font-mono text-ink-primary">antigravity</code>, or any custom directory.
               </p>
-            </a>
-            <a
-              href="https://github.com/cyyier/pa/blob/main/skills/py-to-pa/SKILL.md"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="bg-surface border hairline hover:border-white/20 rounded-md p-4 transition-colors block"
-            >
-              <div class="font-mono text-xs font-semibold text-ink-primary">py-to-pa</div>
-              <p class="mt-1.5 text-xs leading-relaxed text-ink-secondary">
-                Triage Python modules, invert control to Pa, and verify via differential tests.
-              </p>
-            </a>
-            <a
-              href="https://github.com/cyyier/pa/blob/main/skills/cpp-to-pa/SKILL.md"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="bg-surface border hairline hover:border-white/20 rounded-md p-4 transition-colors block"
-            >
-              <div class="font-mono text-xs font-semibold text-ink-primary">cpp-to-pa</div>
-              <p class="mt-1.5 text-xs leading-relaxed text-ink-secondary">
-                Map std::vector, std::span, and structs one-to-one to readable Pa code.
-              </p>
-            </a>
+              <div class="bg-canvas border hairline rounded-md overflow-hidden">
+                <div class="px-3.5 py-2 border-b hairline flex items-center justify-between font-mono text-[11px] text-ink-muted">
+                  <span>install all skills (default: all)</span>
+                  <button
+                    type="button"
+                    class="copy-trigger inline-flex items-center gap-1.5 text-ink-secondary hover:text-ink-primary border hairline bg-surface px-2 py-0.5 rounded transition-colors cursor-pointer"
+                    data-copy="pac skill --install claude"
+                  >
+                    <i data-lucide="copy" class="w-3 h-3"></i>
+                    <span>Copy</span>
+                  </button>
+                </div>
+                <pre class="p-3.5 font-mono text-xs leading-relaxed overflow-x-auto"><code><span class="tok-op">$</span> <span class="tok-id">pac skill --install claude</span>            <span class="tok-cm"># project-local (.claude/skills/)</span>
+<span class="tok-op">$</span> <span class="tok-id">pac skill --install cursor --global</span>   <span class="tok-cm"># user-global (~/.cursor/skills/)</span>
+<span class="tok-op">$</span> <span class="tok-id">pac skill --list</span>                      <span class="tok-cm"># pa-coder · py-to-pa · cpp-to-pa</span></code></pre>
+              </div>
+
+              <!-- Real Bundled Skill Pills -->
+              <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2.5 font-mono text-[11px]">
+                <div class="bg-canvas border hairline rounded px-3 py-2">
+                  <div class="text-accent font-semibold">pa-coder</div>
+                  <div class="text-ink-muted mt-0.5 font-sans text-[11px]">0-to-1 Pa projects &amp; <code class="font-mono text-ink-secondary">.paw</code></div>
+                </div>
+                <div class="bg-canvas border hairline rounded px-3 py-2">
+                  <div class="text-[#5EEAD4] font-semibold">py-to-pa</div>
+                  <div class="text-ink-muted mt-0.5 font-sans text-[11px]">Port Python hot loops to <code class="font-mono text-ink-secondary">.so</code></div>
+                </div>
+                <div class="bg-canvas border hairline rounded px-3 py-2">
+                  <div class="text-ink-primary font-semibold">cpp-to-pa</div>
+                  <div class="text-ink-muted mt-0.5 font-sans text-[11px]">Migrate C++ to flat RAII <code class="font-mono text-ink-secondary">.pa</code></div>
+                </div>
+              </div>
+            </div>
+            <div class="px-5 py-2.5 border-t hairline bg-canvas/50 font-mono text-[11px] text-ink-muted">
+              Omit the skill name to install all three, or pass one explicitly (e.g. <span class="text-ink-secondary">pac skill py-to-pa --install codex</span>).
+            </div>
           </div>
 
-          <div class="pt-4 flex flex-wrap items-center gap-3">
+          <!-- Step 3: Prompt Your AI -->
+          <div class="lg:col-span-12 bg-surface border hairline rounded-md overflow-hidden">
+            <div class="px-5 py-3 border-b hairline bg-canvas flex flex-wrap items-center justify-between gap-2 font-mono text-[11px]">
+              <span class="text-accent font-semibold">STEP 03 · PROMPT YOUR AGENT</span>
+              <span class="text-ink-muted">Copy either prompt directly into Claude Code, Cursor, Codex, or Copilot</span>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-white/[0.08]">
+              <!-- Prompt A: Pure Pa Standalone -->
+              <div class="p-5 flex flex-col justify-between gap-4">
+                <div>
+                  <div class="flex items-center justify-between gap-2 mb-2.5">
+                    <span class="font-mono text-[11px] text-ink-primary font-semibold">PROMPT A · STANDALONE PURE PA</span>
+                    <span class="font-mono text-[10px] text-accent border border-accent/30 bg-accent/10 px-1.5 py-0.5 rounded">pa-coder</span>
+                  </div>
+                  <p class="font-mono text-xs leading-relaxed text-ink-secondary bg-canvas border hairline rounded p-3.5">
+                    &ldquo;Write a standalone Pa CLI in main.pa that computes a 100k-point moving average, verify it with pac check --ai-diagnostic, and build a native --mode prod binary.&rdquo;
+                  </p>
+                </div>
+                <div class="flex justify-end">
+                  <button
+                    type="button"
+                    class="copy-trigger inline-flex items-center gap-1.5 font-mono text-[11px] text-ink-secondary hover:text-ink-primary border hairline bg-canvas px-2.5 py-1 rounded transition-colors cursor-pointer"
+                    data-copy="Write a standalone Pa CLI in main.pa that computes a 100k-point moving average, verify it with pac check --ai-diagnostic, and build a native --mode prod binary."
+                  >
+                    <i data-lucide="copy" class="w-3 h-3"></i>
+                    <span>Copy Prompt</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Prompt B: Python .so Accelerator -->
+              <div class="p-5 flex flex-col justify-between gap-4">
+                <div>
+                  <div class="flex items-center justify-between gap-2 mb-2.5">
+                    <span class="font-mono text-[11px] text-ink-primary font-semibold">PROMPT B · PYTHON .SO ACCELERATOR</span>
+                    <span class="font-mono text-[10px] text-[#5EEAD4] border border-[#5EEAD4]/30 bg-[#5EEAD4]/10 px-1.5 py-0.5 rounded">py-to-pa</span>
+                  </div>
+                  <p class="font-mono text-xs leading-relaxed text-ink-secondary bg-canvas border hairline rounded p-3.5">
+                    &ldquo;Port the hot loop in scorer.py to an @export Pa kernel using py-to-pa, compile it with pac build --shared into a direct-import .so module, and verify output parity against Python.&rdquo;
+                  </p>
+                </div>
+                <div class="flex justify-end">
+                  <button
+                    type="button"
+                    class="copy-trigger inline-flex items-center gap-1.5 font-mono text-[11px] text-ink-secondary hover:text-ink-primary border hairline bg-canvas px-2.5 py-1 rounded transition-colors cursor-pointer"
+                    data-copy="Port the hot loop in scorer.py to an @export Pa kernel using py-to-pa, compile it with pac build --shared into a direct-import .so module, and verify output parity against Python."
+                  >
+                    <i data-lucide="copy" class="w-3 h-3"></i>
+                    <span>Copy Prompt</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Closing Callout Footer -->
+            <div class="px-5 py-4 border-t border-accent/25 bg-accent/[0.04] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-ink-primary">
+                  That&rsquo;s it. Hand the rest over to your AI.
+                </p>
+                <p class="text-xs text-ink-secondary mt-0.5">
+                  With the skills installed, your agent already knows Pa&rsquo;s zero-annotation syntax, <code class="font-mono text-ink-primary">mut()</code> borrow rules,
+                  and the <code class="font-mono text-ink-primary">pac check --ai-diagnostic</code> deterministic JSON self-healing loop&mdash;no manual syntax study required.
+                </p>
+              </div>
+              <a
+                href="#cheatsheet"
+                class="shrink-0 inline-flex items-center gap-1.5 font-mono text-xs text-accent hover:text-[#D4C8FE] transition-colors"
+              >
+                <span>Skip to Human Review</span>
+                <i data-lucide="arrow-down" class="w-3.5 h-3.5"></i>
+              </a>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. SECTION 02: MANUAL DEEP DIVE (TWO PATHS) -->
+    <section id="deep-dive" class="border-b hairline">
+      <div class="max-w-6xl mx-auto px-6 py-20">
+        <div class="mb-10 max-w-3xl">
+          <p class="font-mono text-[11px] uppercase tracking-wider text-accent mb-2">
+            02 / Manual Deep Dive
+          </p>
+          <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight leading-tight text-ink-primary">
+            Two production workflows. Same compiler.
+          </h2>
+          <p class="mt-3 text-sm leading-relaxed text-ink-secondary">
+            Want to drive <code class="font-mono text-xs text-ink-primary">pac</code> directly? Choose whether you are shipping
+            a standalone native executable or accelerating an existing Python codebase with zero <code class="font-mono text-xs text-ink-primary">ctypes</code> boilerplate.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+
+          <!-- PATH A: Pure Pa Standalone -->
+          <article id="standalone" class="bg-surface border hairline rounded-md p-6 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between gap-2 mb-3">
+                <span class="font-mono text-[11px] text-accent font-semibold">PATH A · PURE PA STANDALONE</span>
+                <span class="font-mono text-[11px] text-ink-secondary border hairline bg-canvas px-2 py-0.5 rounded">
+                  0 GC · LLVM -O2
+                </span>
+              </div>
+              <h3 class="text-lg font-semibold tracking-tight text-ink-primary">
+                Compile a zero-dependency native executable
+              </h3>
+              <p class="mt-2 text-sm leading-relaxed text-ink-secondary">
+                Pure <code class="font-mono text-xs text-ink-primary">.pa</code> programs compile straight to native machine code via LLVM&mdash;no
+                interpreter, no <code class="font-mono text-xs text-ink-primary">libpython</code> linked, and zero garbage-collector pauses.
+              </p>
+
+              <!-- Code: main.pa -->
+              <div class="mt-5 bg-canvas border hairline rounded-md overflow-hidden">
+                <div class="px-3.5 py-2 border-b hairline flex items-center justify-between font-mono text-[11px] text-ink-muted">
+                  <span>main.pa</span>
+                  <button
+                    type="button"
+                    class="copy-trigger inline-flex items-center gap-1.5 text-ink-secondary hover:text-ink-primary border hairline bg-surface px-2 py-0.5 rounded transition-colors cursor-pointer"
+                    data-copy="def sum_squares(n) -> float:&#10;    total = 0.0&#10;    for i in range(n):&#10;        x = float(i) * 0.001&#10;        total += x * x&#10;    return total&#10;&#10;def main() -> int:&#10;    print(sum_squares(100000))&#10;    return 0"
+                  >
+                    <i data-lucide="copy" class="w-3 h-3"></i>
+                    <span>Copy</span>
+                  </button>
+                </div>
+                <pre class="p-3.5 font-mono text-[11.5px] leading-[1.65] overflow-x-auto tabular-nums"><code><span class="tok-kw">def</span> <span class="tok-id">sum_squares</span><span class="tok-op">(</span><span class="tok-id">n</span><span class="tok-op">) -&gt;</span> <span class="tok-id">float</span><span class="tok-op">:</span>
+    <span class="tok-id">total</span> <span class="tok-op">=</span> <span class="tok-id">0.0</span>
+    <span class="tok-kw">for</span> <span class="tok-id">i</span> <span class="tok-kw">in</span> <span class="tok-id">range</span><span class="tok-op">(</span><span class="tok-id">n</span><span class="tok-op">):</span>
+        <span class="tok-id">x</span> <span class="tok-op">=</span> <span class="tok-id">float</span><span class="tok-op">(</span><span class="tok-id">i</span><span class="tok-op">) *</span> <span class="tok-id">0.001</span>
+        <span class="tok-id">total</span> <span class="tok-op">+=</span> <span class="tok-id">x</span> <span class="tok-op">*</span> <span class="tok-id">x</span>
+    <span class="tok-kw">return</span> <span class="tok-id">total</span>
+
+<span class="tok-kw">def</span> <span class="tok-id">main</span><span class="tok-op">() -&gt;</span> <span class="tok-id">int</span><span class="tok-op">:</span>
+    <span class="tok-id">print</span><span class="tok-op">(</span><span class="tok-id">sum_squares</span><span class="tok-op">(</span><span class="tok-id">100000</span><span class="tok-op">))</span>
+    <span class="tok-kw">return</span> <span class="tok-id">0</span></code></pre>
+              </div>
+
+              <!-- Build & Run Commands -->
+              <div class="mt-4 bg-canvas border hairline rounded-md overflow-hidden">
+                <div class="px-3.5 py-2 border-b hairline flex items-center justify-between font-mono text-[11px] text-ink-muted">
+                  <span>check, compile &amp; run</span>
+                  <button
+                    type="button"
+                    class="copy-trigger inline-flex items-center gap-1.5 text-ink-secondary hover:text-ink-primary border hairline bg-surface px-2 py-0.5 rounded transition-colors cursor-pointer"
+                    data-copy="pac check main.pa&#10;pac build main.pa --mode prod -o app&#10;./app"
+                  >
+                    <i data-lucide="copy" class="w-3 h-3"></i>
+                    <span>Copy</span>
+                  </button>
+                </div>
+                <pre class="p-3.5 font-mono text-[11.5px] leading-[1.65] overflow-x-auto tabular-nums"><code><span class="tok-op">$</span> <span class="tok-id">pac check main.pa</span>
+<span class="tok-op">$</span> <span class="tok-id">pac build main.pa --mode prod -o app</span>
+<span class="tok-op">$</span> <span class="tok-id">./app</span>
+<span class="tok-cm">333328333.34999967</span></code></pre>
+              </div>
+            </div>
+
+            <div class="mt-5 pt-4 border-t hairline text-xs text-ink-secondary leading-relaxed">
+              Use <code class="font-mono text-[11px] text-ink-primary">--mode dev</code> (default) during development for runtime bounds checks
+              and deep <code class="font-mono text-[11px] text-ink-primary">.paw</code> linting; switch to
+              <code class="font-mono text-[11px] text-ink-primary">--mode prod</code> to ship. For binaries that embed <code class="font-mono text-[11px] text-ink-primary">.paw</code> modules
+              across machines, add <code class="font-mono text-[11px] text-ink-primary">--relocatable</code> and run <code class="font-mono text-[11px] text-ink-primary">pac bundle app --with-stdlib</code>.
+            </div>
+          </article>
+
+          <!-- PATH B: Native .so for Python (preserves #shipping anchor) -->
+          <article id="shipping" class="bg-surface border hairline rounded-md p-6 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between gap-2 mb-3">
+                <span class="font-mono text-[11px] text-[#5EEAD4] font-semibold">PATH B · NATIVE .SO FOR PYTHON</span>
+                <span class="font-mono text-[11px] text-ink-secondary border hairline bg-canvas px-2 py-0.5 rounded">
+                  zero ctypes · direct import
+                </span>
+              </div>
+              <h3 class="text-lg font-semibold tracking-tight text-ink-primary">
+                Drop-in native extension module for Python hot loops
+              </h3>
+              <p class="mt-2 text-sm leading-relaxed text-ink-secondary">
+                Replace Cython, pybind11, or <code class="font-mono text-xs text-ink-primary">ctypes</code> wiring.
+                Mark functions with <code class="font-mono text-xs text-ink-primary">@export</code> and compile with
+                <code class="font-mono text-xs text-ink-primary">pac build --shared</code> to emit a CPython-importable module.
+              </p>
+
+              <!-- Code: pa_kernel.pa -->
+              <div class="mt-5 bg-canvas border hairline rounded-md overflow-hidden">
+                <div class="px-3.5 py-2 border-b hairline flex items-center justify-between font-mono text-[11px] text-ink-muted">
+                  <span>pa_kernel.pa</span>
+                  <button
+                    type="button"
+                    class="copy-trigger inline-flex items-center gap-1.5 text-ink-secondary hover:text-ink-primary border hairline bg-surface px-2 py-0.5 rounded transition-colors cursor-pointer"
+                    data-copy="@export&#10;def dot_scale(xs: span[float], k: float) -> float:&#10;    acc = 0.0&#10;    for i in range(len(xs)):&#10;        acc += xs[i] * k&#10;    return acc"
+                  >
+                    <i data-lucide="copy" class="w-3 h-3"></i>
+                    <span>Copy</span>
+                  </button>
+                </div>
+                <pre class="p-3.5 font-mono text-[11.5px] leading-[1.65] overflow-x-auto tabular-nums"><code><span class="tok-kw">@export</span>
+<span class="tok-kw">def</span> <span class="tok-id">dot_scale</span><span class="tok-op">(</span><span class="tok-id">xs</span><span class="tok-op">:</span> <span class="tok-id">span</span><span class="tok-op">[</span><span class="tok-id">float</span><span class="tok-op">],</span> <span class="tok-id">k</span><span class="tok-op">:</span> <span class="tok-id">float</span><span class="tok-op">) -&gt;</span> <span class="tok-id">float</span><span class="tok-op">:</span>
+    <span class="tok-id">acc</span> <span class="tok-op">=</span> <span class="tok-id">0.0</span>
+    <span class="tok-kw">for</span> <span class="tok-id">i</span> <span class="tok-kw">in</span> <span class="tok-id">range</span><span class="tok-op">(</span><span class="tok-id">len</span><span class="tok-op">(</span><span class="tok-id">xs</span><span class="tok-op">)):</span>
+        <span class="tok-id">acc</span> <span class="tok-op">+=</span> <span class="tok-id">xs</span><span class="tok-op">[</span><span class="tok-id">i</span><span class="tok-op">] *</span> <span class="tok-id">k</span>
+    <span class="tok-kw">return</span> <span class="tok-id">acc</span></code></pre>
+              </div>
+
+              <!-- Build Shared + Direct Python Import -->
+              <div class="mt-4 bg-canvas border hairline rounded-md overflow-hidden">
+                <div class="px-3.5 py-2 border-b hairline flex items-center justify-between font-mono text-[11px] text-ink-muted">
+                  <span>compile &amp; import directly in Python</span>
+                  <button
+                    type="button"
+                    class="copy-trigger inline-flex items-center gap-1.5 text-ink-secondary hover:text-ink-primary border hairline bg-surface px-2 py-0.5 rounded transition-colors cursor-pointer"
+                    data-copy="pac build --shared --mode prod pa_kernel.pa -o pa_kernel.so&#10;python -c &quot;import array, pa_kernel; print(pa_kernel.dot_scale(array.array('d', [1.5, 2.5, 3.5, 4.5]), 2.0))&quot;"
+                  >
+                    <i data-lucide="copy" class="w-3 h-3"></i>
+                    <span>Copy</span>
+                  </button>
+                </div>
+                <pre class="p-3.5 font-mono text-[11.5px] leading-[1.65] overflow-x-auto tabular-nums"><code><span class="tok-op">$</span> <span class="tok-id">pac build --shared --mode prod pa_kernel.pa -o pa_kernel.so</span>
+
+<span class="tok-kw">import</span> <span class="tok-id">array</span><span class="tok-op">,</span> <span class="tok-id">pa_kernel</span>
+
+<span class="tok-cm"># Zero-copy buffer protocol (array.array or NumPy float64 ndarray)</span>
+<span class="tok-id">buf</span> <span class="tok-op">=</span> <span class="tok-id">array</span><span class="tok-op">.</span><span class="tok-id">array</span><span class="tok-op">(</span><span class="tok-id">"d"</span><span class="tok-op">, [</span><span class="tok-id">1.5</span><span class="tok-op">,</span> <span class="tok-id">2.5</span><span class="tok-op">,</span> <span class="tok-id">3.5</span><span class="tok-op">,</span> <span class="tok-id">4.5</span><span class="tok-op">])</span>
+<span class="tok-id">print</span><span class="tok-op">(</span><span class="tok-id">pa_kernel</span><span class="tok-op">.</span><span class="tok-id">dot_scale</span><span class="tok-op">(</span><span class="tok-id">buf</span><span class="tok-op">,</span> <span class="tok-id">2.0</span><span class="tok-op">))</span>   <span class="tok-cm"># 24.0</span></code></pre>
+              </div>
+            </div>
+
+            <div class="mt-5 pt-4 border-t hairline text-xs text-ink-secondary leading-relaxed">
+              Need the reverse direction (Pa calling NumPy, PyTorch, or SQLite)? Place third-party Python imports inside a typed
+              <code class="font-mono text-[11px] text-ink-primary">&lt;tool&gt;.paw</code> module with a locked <code class="font-mono text-[11px] text-ink-primary">In -&gt; Out</code> signature;
+              Pa passes zero-copy read-only <code class="font-mono text-[11px] text-ink-primary">memoryview</code> buffers and traps boundary faults into
+              <code class="font-mono text-[11px] text-ink-primary">pa_boundary_fault.json</code>.
+            </div>
+          </article>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. SECTION 03: HUMAN REVIEW CHEATSHEET -->
+    <section id="cheatsheet" class="border-b hairline">
+      <div class="max-w-6xl mx-auto px-6 py-20">
+        <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
+          <div class="max-w-2xl">
+            <p class="font-mono text-[11px] uppercase tracking-wider text-accent mb-2">
+              03 / Human Review Cheatsheet
+            </p>
+            <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight leading-tight text-ink-primary">
+              Key differences from Python when reviewing AI code
+            </h2>
+            <p class="mt-3 text-sm leading-relaxed text-ink-secondary">
+              Every <code class="font-mono text-xs text-ink-primary">.pa</code> file parses with standard
+              <code class="font-mono text-xs text-ink-primary">ast.parse</code>, so control flow reads like Python.
+              Focus your 30-second audit on these five systems-level invariants.
+            </p>
+          </div>
+          <span class="font-mono text-xs text-ink-muted">
+            5 mental-model shifts · 0 lifetime sigils
+          </span>
+        </div>
+
+        <!-- Compact Comparison Table Card -->
+        <div class="bg-surface border hairline rounded-md overflow-hidden">
+          <!-- Column Headers (Desktop) -->
+          <div class="hidden md:grid md:grid-cols-12 border-b hairline bg-canvas px-5 py-2.5 font-mono text-[11px] text-ink-muted uppercase tracking-wider">
+            <div class="col-span-3">Invariant</div>
+            <div class="col-span-4">Python Habit</div>
+            <div class="col-span-5 text-accent">Pa Reality</div>
+          </div>
+
+          <div class="divide-y divide-white/[0.08]">
+            <!-- Row 1: Static Types & Numeric Width -->
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 px-5 py-4 items-start">
+              <div class="md:col-span-3">
+                <div class="font-mono text-xs font-semibold text-ink-primary">01 · Static Types &amp; Width</div>
+                <div class="font-mono text-[11px] text-ink-muted mt-0.5">PA_E086 · PA_E030</div>
+              </div>
+              <div class="md:col-span-4 text-xs leading-relaxed text-ink-secondary">
+                <span class="md:hidden font-mono text-[10px] uppercase text-ink-muted block mb-1">Python Habit</span>
+                Variables change type freely, ints have arbitrary precision, and lists can mix element types.
+              </div>
+              <div class="md:col-span-5 text-xs leading-relaxed text-ink-primary">
+                <span class="md:hidden font-mono text-[10px] uppercase text-accent block mb-1">Pa Reality</span>
+                Local types are inferred statically and stay fixed. <code class="font-mono text-accent">int</code> (<code class="font-mono text-ink-secondary">int64</code>) and
+                <code class="font-mono text-accent">float</code> (<code class="font-mono text-ink-secondary">float64</code>) are 64-bit defaults; narrow widths
+                (<code class="font-mono text-ink-secondary">int32</code>, <code class="font-mono text-ink-secondary">uint8</code>, <code class="font-mono text-ink-secondary">float32</code>)
+                are explicit, and mixed records use flat <code class="font-mono text-accent">@struct</code> classes.
+              </div>
+            </div>
+
+            <!-- Row 2: Read-Only Borrows & mut() -->
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 px-5 py-4 items-start">
+              <div class="md:col-span-3">
+                <div class="font-mono text-xs font-semibold text-ink-primary">02 · Borrows &amp; mut()</div>
+                <div class="font-mono text-[11px] text-ink-muted mt-0.5">PA_E050 · PA_E089</div>
+              </div>
+              <div class="md:col-span-4 text-xs leading-relaxed text-ink-secondary">
+                <span class="md:hidden font-mono text-[10px] uppercase text-ink-muted block mb-1">Python Habit</span>
+                Passing a list to a helper lets that helper mutate it silently; <code class="font-mono text-ink-primary">b = a</code> aliases the same list.
+              </div>
+              <div class="md:col-span-5 text-xs leading-relaxed text-ink-primary">
+                <span class="md:hidden font-mono text-[10px] uppercase text-accent block mb-1">Pa Reality</span>
+                Containers borrow read-only by default (<code class="font-mono text-ink-secondary">const T&amp;</code>). In-place mutation must be marked explicitly at the call site with
+                <code class="font-mono text-accent">mut(xs)</code>, aliasing a mutable borrow is rejected, and <code class="font-mono text-ink-secondary">b = a</code> deep-copies.
+              </div>
+            </div>
+
+            <!-- Row 3: Deterministic RAII & Indexing -->
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 px-5 py-4 items-start">
+              <div class="md:col-span-3">
+                <div class="font-mono text-xs font-semibold text-ink-primary">03 · Flat RAII &amp; Bounds</div>
+                <div class="font-mono text-[11px] text-ink-muted mt-0.5">0 GC · PA_E073</div>
+              </div>
+              <div class="md:col-span-4 text-xs leading-relaxed text-ink-secondary">
+                <span class="md:hidden font-mono text-[10px] uppercase text-ink-muted block mb-1">Python Habit</span>
+                A garbage collector frees heap objects unpredictably, and <code class="font-mono text-ink-primary">a[-1]</code> indexes from the end.
+              </div>
+              <div class="md:col-span-5 text-xs leading-relaxed text-ink-primary">
+                <span class="md:hidden font-mono text-[10px] uppercase text-accent block mb-1">Pa Reality</span>
+                Fixed lists (&le; 64 KB) stay on the stack; dynamic <code class="font-mono text-ink-secondary">Vec[T]</code> auto-frees deterministically at scope exit.
+                Indexing is strictly <code class="font-mono text-accent">0 &lt;= i &lt; len</code> (use <code class="font-mono text-ink-secondary">a[len(a) - 1]</code>, bounds-checked in <code class="font-mono text-ink-secondary">--mode dev</code>).
+              </div>
+            </div>
+
+            <!-- Row 4: .pa vs .paw Isolation Wall -->
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 px-5 py-4 items-start">
+              <div class="md:col-span-3">
+                <div class="font-mono text-xs font-semibold text-ink-primary">04 · .pa / .paw Wall</div>
+                <div class="font-mono text-[11px] text-ink-muted mt-0.5">PA_E001 · PA_E002</div>
+              </div>
+              <div class="md:col-span-4 text-xs leading-relaxed text-ink-secondary">
+                <span class="md:hidden font-mono text-[10px] uppercase text-ink-muted block mb-1">Python Habit</span>
+                Import <code class="font-mono text-ink-primary">numpy</code>, <code class="font-mono text-ink-primary">sqlite3</code>, or any third-party package directly inside compute loops.
+              </div>
+              <div class="md:col-span-5 text-xs leading-relaxed text-ink-primary">
+                <span class="md:hidden font-mono text-[10px] uppercase text-accent block mb-1">Pa Reality</span>
+                Pure <code class="font-mono text-accent">.pa</code> forbids third-party Python imports. External libraries live strictly in typed
+                <code class="font-mono text-[#5EEAD4]">.paw</code> boundary files and cannot be called inside hot loops (batch first).
+              </div>
+            </div>
+
+            <!-- Row 5: C-Style Modulo & Audit Tooling -->
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 px-5 py-4 items-start">
+              <div class="md:col-span-3">
+                <div class="font-mono text-xs font-semibold text-ink-primary">05 · Semantics &amp; LSP Audit</div>
+                <div class="font-mono text-[11px] text-ink-muted mt-0.5">pac check · pac lsp</div>
+              </div>
+              <div class="md:col-span-4 text-xs leading-relaxed text-ink-secondary">
+                <span class="md:hidden font-mono text-[10px] uppercase text-ink-muted block mb-1">Python Habit</span>
+                Floored modulo on negative numbers; manually guessing object sizes and heap allocations.
+              </div>
+              <div class="md:col-span-5 text-xs leading-relaxed text-ink-primary">
+                <span class="md:hidden font-mono text-[10px] uppercase text-accent block mb-1">Pa Reality</span>
+                <code class="font-mono text-ink-secondary">%</code> and <code class="font-mono text-ink-secondary">//</code> follow C semantics (truncate toward zero).
+                Run <code class="font-mono text-accent">pac check --ai-diagnostic</code> for JSON repair tickets, or hover any variable in VS Code (<code class="font-mono text-accent">pac lsp</code>) to see LLVM layout, byte size, and RAII free lines.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Next Steps CTA Strip -->
+        <div class="mt-8 bg-surface border hairline rounded-md p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <p class="font-mono text-[11px] uppercase tracking-wider text-ink-muted mb-1">
+              Want the full compiler internals?
+            </p>
+            <p class="text-sm font-medium text-ink-primary">
+              Explore bidirectional type inference, flat CSR jagged arrays, RAII escape analysis, and the <code class="font-mono text-xs text-accent">.paw</code> C ABI.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-3 shrink-0">
             <a
               href="architecture.html"
               class="inline-flex items-center gap-2 bg-accent text-canvas hover:bg-[#D4C8FE] font-medium text-xs px-4 py-2.5 rounded-md transition-colors"
             >
-              <span>Full Architecture Spec</span>
+              <span>Read Architecture</span>
               <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
             </a>
             <a
-              href="index.html"
-              class="inline-flex items-center gap-2 border hairline bg-surface hover:bg-white/[0.04] text-ink-primary font-mono text-xs px-3.5 py-2.5 rounded-md transition-colors"
+              href="index.html#benchmarks"
+              class="inline-flex items-center gap-2 border hairline bg-canvas hover:bg-white/[0.04] text-ink-primary font-mono text-xs px-3.5 py-2.5 rounded-md transition-colors"
             >
-              <span>&larr; Back to Overview</span>
+              <span>View Benchmarks</span>
             </a>
           </div>
-        </section>
+        </div>
 
-      </main>
-    </div>
-  </div>
-
-  <!-- MINIMAL FOOTER -->
-  <footer class="bg-canvas border-t hairline">
-    <div class="max-w-6xl mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-ink-muted">
-      <div class="flex items-center gap-2.5 font-mono">
-        <img
-          src="Pa.png"
-          alt="Pa"
-          class="w-5 h-5 rounded border hairline object-cover"
-        />
-        <span>&copy; 2026 cyyier · MIT License</span>
       </div>
-      <div class="flex items-center gap-6 font-mono">
-        <a href="index.html" class="hover:text-ink-primary transition-colors">Home</a>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="bg-canvas">
+    <div class="max-w-6xl mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-ink-muted">
+      <div class="flex items-center gap-3 font-mono">
+        <span class="text-ink-secondary font-semibold">Pa</span>
+        <span>&middot;</span>
+        <span>MIT License</span>
+        <span>&middot;</span>
+        <span>Built for AI authors &amp; human reviewers</span>
+      </div>
+      <div class="flex items-center gap-5 font-mono">
+        <a
+          href="index.html"
+          class="hover:text-ink-primary transition-colors"
+        >
+          Home
+        </a>
+        <a
+          href="architecture.html"
+          class="hover:text-ink-primary transition-colors"
+        >
+          Architecture
+        </a>
         <a
           href="https://github.com/cyyier/pa"
           target="_blank"
@@ -643,12 +738,6 @@
           class="hover:text-ink-primary transition-colors"
         >
           GitHub
-        </a>
-        <a
-          href="architecture.html"
-          class="hover:text-ink-primary transition-colors"
-        >
-          Architecture
         </a>
         <a
           href="https://github.com/cyyier/pa/blob/main/CHANGELOG.md"
@@ -668,6 +757,7 @@
     // Copy buttons
     document.querySelectorAll('.copy-trigger').forEach((btn) => {
       let timer = null;
+      const originalHtml = btn.innerHTML;
       btn.addEventListener('click', async () => {
         const text = btn.dataset.copy;
         try {
@@ -685,35 +775,11 @@
         lucide.createIcons();
         clearTimeout(timer);
         timer = setTimeout(() => {
-          btn.innerHTML = '<i data-lucide="copy" class="w-3 h-3"></i><span>Copy</span>';
+          btn.innerHTML = originalHtml;
           lucide.createIcons();
         }, 1600);
       });
     });
-
-    // Active TOC highlight on scroll
-    const tocLinks = document.querySelectorAll('.toc-link');
-    const sections = Array.from(tocLinks)
-      .map((a) => document.querySelector(a.getAttribute('href')))
-      .filter(Boolean);
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (!entry.isIntersecting) return;
-          const id = '#' + entry.target.id;
-          tocLinks.forEach((link) => {
-            const active = link.getAttribute('href') === id;
-            link.classList.toggle('text-ink-primary', active);
-            link.classList.toggle('border-accent', active);
-            link.classList.toggle('text-ink-secondary', !active);
-            link.classList.toggle('border-transparent', !active);
-          });
-        });
-      },
-      { rootMargin: '-15% 0px -70% 0px' }
-    );
-    sections.forEach((s) => observer.observe(s));
 
     // Mobile navbar menu toggle
     const mobileBtn = document.getElementById('mobile-menu-btn');
