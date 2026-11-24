@@ -16,7 +16,7 @@
 
 ## Installation & Quickstart
 
-Requires Linux x86-64, macOS, or Windows x64, CPython 3.11–3.13 (headers + shared Python library), and a C compiler (`gcc`, `clang`, or MSVC `cl`).
+Requires Linux x86-64, macOS, or Windows x64, CPython 3.10–3.14 (headers + shared Python library), and a C compiler (`gcc`, `clang`, or MSVC `cl`).
 
 ```bash
 pip install pa-compiler        # installs `pac`
@@ -84,7 +84,7 @@ pa/
 
 ```bash
 git clone https://github.com/cyyier/pa.git && cd pa
-uv venv --python 3.12 .venv        # or any CPython 3.11–3.13 with Python.h + shared libpython
+uv venv --python 3.12 .venv        # or any CPython 3.10–3.14 with Python.h + shared libpython
 source .venv/bin/activate
 pip install -e ".[dev]"
 
@@ -98,8 +98,8 @@ pytest -q                          # run full compiler, runtime, LSP, doctor, an
 
 ## Status & Roadmap
 
-**Current (`v0.1.0` alpha):**
-- **Supported:** Linux x86-64, macOS (arm64 / x86-64), Windows x64, CPython 3.11–3.13, `gcc` / `clang` / MSVC `cl`, LLVM via `llvmlite`.
+**Current (`v0.1.1` alpha):**
+- **Supported:** Linux x86-64, macOS (arm64 / x86-64), Windows x64, CPython 3.10–3.14, `gcc` / `clang` / MSVC `cl`, LLVM via `llvmlite`.
 - **Included:** zero-annotation `.pa` compiler (`int`/`uint`/`float`/`bool`, explicit widths `int32`/`uint8`/`uint32`/`uint64`/`float32` + short aliases `i32`/`u8`/`u32`/`u64`/`f32`, `**`, zero-copy `str_view` slicing, `@struct`, stack/RAII `Vec`, flat CSR `Vec[Vec[T]]`, `String`, `libm`, multi-file `.pa` module imports via local dirs / `-I` / `PA_PATH` / pip packages), `.paw` zero-copy CPython bridge with two-way customs, `--shared` guarded C-ABI libraries, `pac doctor` / `pac bundle` (ELF / Mach-O / PE), `pac skill`, `pac lsp`, and VS Code extension.
 
 **Planned:**
